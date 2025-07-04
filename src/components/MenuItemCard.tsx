@@ -139,7 +139,7 @@ const MenuItemCard = ({
               <Clock className="h-3 w-3" />
               <span className="text-xs">{item.prepTime} min</span>
             </div>
-            {cartQuantity && cartQuantity > 0 ? (
+            {cartQuantity > 0 ? (
               <div
                 className="flex items-center gap-2"
                 onClick={(e) => e.stopPropagation()}
@@ -233,7 +233,7 @@ export const MenuItemListCard = ({
                 <div className="font-bold text-gray-800 text-lg">
                   ${item.price.toFixed(2)}
                 </div>
-                {cartQuantity && cartQuantity > 0 ? (
+                {cartQuantity > 0 ? (
                   <div
                     className="flex items-center gap-2"
                     onClick={(e) => e.stopPropagation()}

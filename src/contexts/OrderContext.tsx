@@ -35,6 +35,7 @@ interface OrderContextType {
   addOrder: (
     order: Omit<Order, "id" | "orderTime" | "status">,
   ) => Promise<void>;
+  updateOrder: (orderId: string, updatedOrder: Partial<Order>) => Promise<void>;
   updateOrderStatus: (
     orderId: string,
     status: Order["status"],
@@ -277,6 +278,84 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  // Update entire order in database
+  const updateOrder = async (orderId: string, updatedOrder: Partial<Order>) => {
+    try {
+      // Check if Supabase is properly configured
+      if (
+        !import.meta.env.VITE_SUPABASE_URL ||
+        !import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        console.log("Supabase not configured, updating mock order");
+        // Update local state only when Supabase is not configured
+        setOrders((prev) =>
+          prev.map((order) =>
+            order.id === orderId ? { ...order, ...updatedOrder } : order,
+          ),
+        );
+        return;
+      }
+
+      console.log(`Updating order ${orderId}:`, updatedOrder);
+
+      // Update order in database
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          total: updatedOrder.total,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orderId);
+
+      if (orderError) {
+        console.error("Error updating order:", orderError);
+        return;
+      }
+
+      // If items are updated, we need to update order_items table
+      if (updatedOrder.items) {
+        // Delete existing order items
+        const { error: deleteError } = await supabase
+          .from("order_items")
+          .delete()
+          .eq("order_id", orderId);
+
+        if (deleteError) {
+          console.error("Error deleting order items:", deleteError);
+          return;
+        }
+
+        // Insert updated order items
+        const orderItems = updatedOrder.items.map((item) => ({
+          order_id: orderId,
+          menu_item_id: item.id,
+          quantity: item.quantity,
+          price: item.price,
+        }));
+
+        const { error: itemsError } = await supabase
+          .from("order_items")
+          .insert(orderItems);
+
+        if (itemsError) {
+          console.error("Error updating order items:", itemsError);
+          return;
+        }
+      }
+
+      console.log("Order updated successfully");
+
+      // Update local state
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId ? { ...order, ...updatedOrder } : order,
+        ),
+      );
+    } catch (error) {
+      console.error("Error updating order:", error);
+    }
+  };
+
   // Update order status in database
   const updateOrderStatus = async (
     orderId: string,
@@ -365,6 +444,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         orders,
         loading,
         addOrder,
+        updateOrder,
         updateOrderStatus,
         refreshOrders,
       }}

@@ -130,16 +130,16 @@ const OrdersPage = () => {
     setIsLoading(true);
 
     // Simulate 2-second loading
-    setTimeout(async () => {
+    setTimeout(() => {
       setIsLoading(false);
       setShowConfirmation(true);
 
-      // Update all pending orders to "preparing" status
-      for (const order of orders) {
+      // Update all orders to "preparing" status
+      orders.forEach((order) => {
         if (order.status === "pending") {
-          await updateOrderStatus(order.id, "preparing");
+          updateOrderStatus(order.id, "preparing");
         }
-      }
+      });
 
       // Hide confirmation after 3 seconds and close dialog
       setTimeout(() => {
@@ -274,22 +274,26 @@ const OrdersPage = () => {
         )}
       </div>
 
-      {/* Send to Kitchen Section - Only show if there are pending orders */}
-      {orders.length > 0 &&
-        orders.some((order) => order.status === "pending") && (
-          <div className="fixed bottom-20 left-0 right-0 bg-white px-6 py-6">
-            <div className="max-w-sm mx-auto">
-              {/* Send to Kitchen Button */}
-              <Button
-                onClick={handleSendToKitchen}
-                className="w-full bg-gray-900 hover:bg-black text-white rounded-2xl py-4 text-lg font-semibold flex items-center justify-center gap-3"
-              >
-                <ChefHat className="w-5 h-5" />
-                Send to Kitchen
-              </Button>
-            </div>
+      {/* Send to Kitchen Section */}
+      {orders.length > 0 && (
+        <div className="fixed bottom-20 left-0 right-0 bg-white px-6 py-6">
+          <div className="max-w-sm mx-auto">
+            {/* Send to Kitchen Button */}
+            <Button
+              onClick={handleSendToKitchen}
+              disabled={!orders.some((order) => order.status === "pending")}
+              className={`w-full rounded-2xl py-4 text-lg font-semibold flex items-center justify-center gap-3 ${
+                orders.some((order) => order.status === "pending")
+                  ? "bg-gray-900 hover:bg-black text-white"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
+            >
+              <ChefHat className="w-5 h-5" />
+              Send to Kitchen
+            </Button>
           </div>
-        )}
+        </div>
+      )}
 
       {/* Send to Kitchen Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>

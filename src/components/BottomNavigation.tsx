@@ -9,20 +9,8 @@ interface BottomNavigationProps {
 
 const BottomNavigation = ({
   activeTab = "home",
-  onHomeClick = () => {
-    // Preserve table parameter when navigating
-    const urlParams = new URLSearchParams(window.location.search);
-    const table = urlParams.get("table");
-    const menuUrl = table ? `/menu?table=${table}` : "/menu";
-    window.location.href = menuUrl;
-  },
-  onOrdersClick = () => {
-    // Preserve table parameter when navigating
-    const urlParams = new URLSearchParams(window.location.search);
-    const table = urlParams.get("table");
-    const ordersUrl = table ? `/orders?table=${table}` : "/orders";
-    window.location.href = ordersUrl;
-  },
+  onHomeClick = () => (window.location.href = "/menu"),
+  onOrdersClick = () => (window.location.href = "/orders"),
 }: BottomNavigationProps) => {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4">

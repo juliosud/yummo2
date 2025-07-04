@@ -31,7 +31,7 @@ interface CartItem extends MenuItem {
 }
 
 // Mock data for menu items (same as restaurant menu but filtered for available items)
-const mockMenuItems: MenuItem[] = [
+const staticMenuItems: MenuItem[] = [
   // Breakfast Items
   {
     id: "1",
@@ -410,7 +410,7 @@ const CustomerMenu = () => {
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { addOrder } = useOrders();
+  const { addOrder, updateOrder, orders } = useOrders();
 
   // Fetch menu items from database
   const fetchMenuItems = async () => {
@@ -425,7 +425,7 @@ const CustomerMenu = () => {
         console.log(
           "🍽️  CustomerMenu: Using static menu items (database not connected)",
         );
-        setMenuItems(mockMenuItems);
+        setMenuItems(staticMenuItems);
         setLoading(false);
         return;
       }
@@ -438,7 +438,7 @@ const CustomerMenu = () => {
       if (error) {
         console.error("Error fetching menu items:", error);
         // Fallback to static data
-        setMenuItems(mockMenuItems);
+        setMenuItems(staticMenuItems);
         return;
       }
 
@@ -456,7 +456,9 @@ const CustomerMenu = () => {
           available: true, // Default to available
         })) || [];
 
-      setMenuItems(convertedItems.length > 0 ? convertedItems : mockMenuItems);
+      setMenuItems(
+        convertedItems.length > 0 ? convertedItems : staticMenuItems,
+      );
       console.log(
         "✅ CustomerMenu: Loaded",
         convertedItems.length,
@@ -464,7 +466,7 @@ const CustomerMenu = () => {
       );
     } catch (error) {
       console.error("Error fetching menu items:", error);
-      setMenuItems(mockMenuItems);
+      setMenuItems(staticMenuItems);
     } finally {
       setLoading(false);
     }
@@ -567,8 +569,10 @@ const CustomerMenu = () => {
     ...new Set(availableItems.map((item) => item.category)),
   ];
 
-  const addToCart = (item: MenuItem) => {
+  const addToCart = async (item: MenuItem) => {
     console.log("Adding to cart:", item.name);
+
+    // Update local cart state for UI
     setCart((prevCart) => {
       const existingItem = prevCart.find((cartItem) => cartItem.id === item.id);
       if (existingItem) {
@@ -585,10 +589,74 @@ const CustomerMenu = () => {
         return newCart;
       }
     });
+
+    // Immediately add/update the order in OrderContext
+    const orderItem = {
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: 1,
+      image: item.image,
+    };
+
+    // Check if there's already a pending order for this table
+    const existingOrder = orders.find(
+      (order) =>
+        order.tableNumber === (tableNumber || "1") &&
+        order.status === "pending",
+    );
+
+    if (existingOrder) {
+      // Update existing order by adding this item
+      const existingOrderItem = existingOrder.items.find(
+        (orderItem) => orderItem.id === item.id,
+      );
+
+      if (existingOrderItem) {
+        // Item already exists in order, increase quantity
+        const updatedItems = existingOrder.items.map((orderItem) =>
+          orderItem.id === item.id
+            ? { ...orderItem, quantity: orderItem.quantity + 1 }
+            : orderItem,
+        );
+        const newTotal = updatedItems.reduce(
+          (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
+          0,
+        );
+
+        // Update the order in context
+        await updateOrder(existingOrder.id, {
+          items: updatedItems,
+          total: newTotal,
+        });
+      } else {
+        // Add new item to existing order
+        const updatedItems = [...existingOrder.items, orderItem];
+        const newTotal = updatedItems.reduce(
+          (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
+          0,
+        );
+
+        // Update the order in context
+        await updateOrder(existingOrder.id, {
+          items: updatedItems,
+          total: newTotal,
+        });
+      }
+    } else {
+      // Create new order
+      await addOrder({
+        items: [orderItem],
+        total: item.price,
+        tableNumber: tableNumber || "1",
+      });
+    }
   };
 
-  const removeFromCart = (itemId: string) => {
+  const removeFromCart = async (itemId: string) => {
     console.log("Removing from cart:", itemId);
+
+    // Update local cart state for UI
     setCart((prevCart) => {
       const existingItem = prevCart.find((cartItem) => cartItem.id === itemId);
       if (existingItem && existingItem.quantity > 1) {
@@ -605,11 +673,71 @@ const CustomerMenu = () => {
         return newCart;
       }
     });
+
+    // Also update the order in OrderContext
+    const existingOrder = orders.find(
+      (order) =>
+        order.tableNumber === (tableNumber || "1") &&
+        order.status === "pending",
+    );
+
+    if (existingOrder) {
+      const existingOrderItem = existingOrder.items.find(
+        (orderItem) => orderItem.id === itemId,
+      );
+
+      if (existingOrderItem) {
+        if (existingOrderItem.quantity > 1) {
+          // Decrease quantity
+          const updatedItems = existingOrder.items.map((orderItem) =>
+            orderItem.id === itemId
+              ? { ...orderItem, quantity: orderItem.quantity - 1 }
+              : orderItem,
+          );
+          const newTotal = updatedItems.reduce(
+            (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
+            0,
+          );
+
+          // Update the order in context
+          await updateOrder(existingOrder.id, {
+            items: updatedItems,
+            total: newTotal,
+          });
+        } else {
+          // Remove item completely
+          const updatedItems = existingOrder.items.filter(
+            (orderItem) => orderItem.id !== itemId,
+          );
+          const newTotal = updatedItems.reduce(
+            (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
+            0,
+          );
+
+          // Update the order in context
+          await updateOrder(existingOrder.id, {
+            items: updatedItems,
+            total: newTotal,
+          });
+        }
+      }
+    }
   };
 
   const getCartItemQuantity = (itemId: string) => {
-    const cartItem = cart.find((item) => item.id === itemId);
-    return cartItem ? cartItem.quantity : 0;
+    // Get quantity from the pending order in OrderContext instead of local cart
+    const existingOrder = orders.find(
+      (order) =>
+        order.tableNumber === (tableNumber || "1") &&
+        order.status === "pending",
+    );
+
+    if (existingOrder) {
+      const orderItem = existingOrder.items.find((item) => item.id === itemId);
+      return orderItem ? orderItem.quantity : 0;
+    }
+
+    return 0;
   };
 
   const getTotalItems = () => {
@@ -625,32 +753,10 @@ const CustomerMenu = () => {
     setIsItemDialogOpen(true);
   };
 
-  const handleSendToKitchen = async () => {
-    if (cart.length === 0) return;
-
-    // Add order to global state
-    const orderItems = cart.map((item) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-      image: item.image,
-    }));
-
-    await addOrder({
-      items: orderItems,
-      total: getTotalPrice(),
-      tableNumber: tableNumber || "1",
-    });
-
-    // Clear cart after adding to orders
-    setCart([]);
-
-    // Navigate to orders page to show the placed order
-    const urlParams = new URLSearchParams(window.location.search);
-    const table = urlParams.get("table");
-    const ordersUrl = table ? `/orders?table=${table}` : "/orders";
-    window.location.href = ordersUrl;
+  const handleSendToKitchen = () => {
+    // Since items are now immediately added to OrderContext,
+    // we just need to navigate to orders page
+    window.location.href = "/orders";
   };
 
   return (
@@ -719,35 +825,8 @@ const CustomerMenu = () => {
         </Tabs>
       </div>
 
-      {/* Cart Summary - Fixed at bottom when items in cart */}
-      {cart.length > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4 z-30">
-          <div className="max-w-sm mx-auto">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="bg-gray-800 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">
-                  {getTotalItems()}
-                </div>
-                <span className="font-medium text-gray-900">
-                  {getTotalItems()} item{getTotalItems() !== 1 ? "s" : ""}
-                </span>
-              </div>
-              <div className="text-lg font-bold text-gray-900">
-                ${getTotalPrice().toFixed(2)}
-              </div>
-            </div>
-            <Button
-              onClick={handleSendToKitchen}
-              className="w-full bg-gray-800 hover:bg-gray-900 text-white rounded-2xl py-3 text-base font-semibold"
-            >
-              Send to Kitchen
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Menu Items Grid */}
-      <div className="bg-white px-6 pb-32 pt-6">
+      <div className="bg-white px-6 pb-24 pt-6">
         {/* Popular Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
