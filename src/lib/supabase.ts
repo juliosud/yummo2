@@ -76,6 +76,21 @@ export interface OrderItem {
   menu_item_id: string;
   quantity: number;
   price: number;
+  item_name: string;
+  menu_item?: MenuItem;
+}
+
+export interface CartItem {
+  id: string;
+  session_id: string;
+  table_number: string;
+  menu_item_id: string;
+  quantity: number;
+  price: number;
+  item_name: string;
+  item_image?: string;
+  created_at: string;
+  updated_at: string;
   menu_item?: MenuItem;
 }
 
@@ -88,4 +103,16 @@ export interface Order {
   created_at: string;
   updated_at: string;
   order_items?: OrderItem[];
+}
+
+export interface TableSession {
+  id: string;
+  table_id: string;
+  session_code: string;
+  is_active: boolean;
+  qr_code_data?: string;
+  menu_url?: string;
+  created_at: string;
+  updated_at: string;
+  ended_at?: string;
 }

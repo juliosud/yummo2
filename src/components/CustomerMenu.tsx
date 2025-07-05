@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Search, Filter, Clock, Star, Plus, Minus } from "lucide-react";
 import { useOrders } from "@/contexts/OrderContext";
+import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import MenuItemCard, { MenuItemListCard } from "@/components/MenuItemCard";
 import BottomNavigation from "@/components/BottomNavigation";
+import SessionGuard from "@/components/SessionGuard";
 import { supabase } from "@/lib/supabase";
 
 interface MenuItem {
@@ -401,16 +403,22 @@ const staticMenuItems: MenuItem[] = [
   },
 ];
 
-const CustomerMenu = () => {
+const CustomerMenuContent = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [tableNumber, setTableNumber] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { addOrder, updateOrder, orders } = useOrders();
+  const {
+    cartItems,
+    addToCart: addToCartContext,
+    removeFromCart: removeFromCartContext,
+    getTotalItems,
+    getTotalPrice,
+    getItemQuantity,
+  } = useCart();
 
   // Fetch menu items from database
   const fetchMenuItems = async () => {
@@ -571,181 +579,17 @@ const CustomerMenu = () => {
 
   const addToCart = async (item: MenuItem) => {
     console.log("Adding to cart:", item.name);
-
-    // Update local cart state for UI
-    setCart((prevCart) => {
-      const existingItem = prevCart.find((cartItem) => cartItem.id === item.id);
-      if (existingItem) {
-        const newCart = prevCart.map((cartItem) =>
-          cartItem.id === item.id
-            ? { ...cartItem, quantity: cartItem.quantity + 1 }
-            : cartItem,
-        );
-        console.log("Updated cart (increased quantity):", newCart);
-        return newCart;
-      } else {
-        const newCart = [...prevCart, { ...item, quantity: 1 }];
-        console.log("Updated cart (new item):", newCart);
-        return newCart;
-      }
-    });
-
-    // Immediately add/update the order in OrderContext
-    const orderItem = {
+    await addToCartContext({
       id: item.id,
       name: item.name,
       price: item.price,
-      quantity: 1,
       image: item.image,
-    };
-
-    // Check if there's already a pending order for this table
-    const existingOrder = orders.find(
-      (order) =>
-        order.tableNumber === (tableNumber || "1") &&
-        order.status === "pending",
-    );
-
-    if (existingOrder) {
-      // Update existing order by adding this item
-      const existingOrderItem = existingOrder.items.find(
-        (orderItem) => orderItem.id === item.id,
-      );
-
-      if (existingOrderItem) {
-        // Item already exists in order, increase quantity
-        const updatedItems = existingOrder.items.map((orderItem) =>
-          orderItem.id === item.id
-            ? { ...orderItem, quantity: orderItem.quantity + 1 }
-            : orderItem,
-        );
-        const newTotal = updatedItems.reduce(
-          (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
-          0,
-        );
-
-        // Update the order in context
-        await updateOrder(existingOrder.id, {
-          items: updatedItems,
-          total: newTotal,
-        });
-      } else {
-        // Add new item to existing order
-        const updatedItems = [...existingOrder.items, orderItem];
-        const newTotal = updatedItems.reduce(
-          (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
-          0,
-        );
-
-        // Update the order in context
-        await updateOrder(existingOrder.id, {
-          items: updatedItems,
-          total: newTotal,
-        });
-      }
-    } else {
-      // Create new order
-      await addOrder({
-        items: [orderItem],
-        total: item.price,
-        tableNumber: tableNumber || "1",
-      });
-    }
+    });
   };
 
   const removeFromCart = async (itemId: string) => {
     console.log("Removing from cart:", itemId);
-
-    // Update local cart state for UI
-    setCart((prevCart) => {
-      const existingItem = prevCart.find((cartItem) => cartItem.id === itemId);
-      if (existingItem && existingItem.quantity > 1) {
-        const newCart = prevCart.map((cartItem) =>
-          cartItem.id === itemId
-            ? { ...cartItem, quantity: cartItem.quantity - 1 }
-            : cartItem,
-        );
-        console.log("Updated cart (decreased quantity):", newCart);
-        return newCart;
-      } else {
-        const newCart = prevCart.filter((cartItem) => cartItem.id !== itemId);
-        console.log("Updated cart (removed item):", newCart);
-        return newCart;
-      }
-    });
-
-    // Also update the order in OrderContext
-    const existingOrder = orders.find(
-      (order) =>
-        order.tableNumber === (tableNumber || "1") &&
-        order.status === "pending",
-    );
-
-    if (existingOrder) {
-      const existingOrderItem = existingOrder.items.find(
-        (orderItem) => orderItem.id === itemId,
-      );
-
-      if (existingOrderItem) {
-        if (existingOrderItem.quantity > 1) {
-          // Decrease quantity
-          const updatedItems = existingOrder.items.map((orderItem) =>
-            orderItem.id === itemId
-              ? { ...orderItem, quantity: orderItem.quantity - 1 }
-              : orderItem,
-          );
-          const newTotal = updatedItems.reduce(
-            (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
-            0,
-          );
-
-          // Update the order in context
-          await updateOrder(existingOrder.id, {
-            items: updatedItems,
-            total: newTotal,
-          });
-        } else {
-          // Remove item completely
-          const updatedItems = existingOrder.items.filter(
-            (orderItem) => orderItem.id !== itemId,
-          );
-          const newTotal = updatedItems.reduce(
-            (sum, orderItem) => sum + orderItem.price * orderItem.quantity,
-            0,
-          );
-
-          // Update the order in context
-          await updateOrder(existingOrder.id, {
-            items: updatedItems,
-            total: newTotal,
-          });
-        }
-      }
-    }
-  };
-
-  const getCartItemQuantity = (itemId: string) => {
-    // Get quantity from the pending order in OrderContext instead of local cart
-    const existingOrder = orders.find(
-      (order) =>
-        order.tableNumber === (tableNumber || "1") &&
-        order.status === "pending",
-    );
-
-    if (existingOrder) {
-      const orderItem = existingOrder.items.find((item) => item.id === itemId);
-      return orderItem ? orderItem.quantity : 0;
-    }
-
-    return 0;
-  };
-
-  const getTotalItems = () => {
-    return cart.reduce((total, item) => total + item.quantity, 0);
-  };
-
-  const getTotalPrice = () => {
-    return cart.reduce((total, item) => total + item.price * item.quantity, 0);
+    await removeFromCartContext(itemId);
   };
 
   const handleItemClick = (item: MenuItem) => {
@@ -753,16 +597,19 @@ const CustomerMenu = () => {
     setIsItemDialogOpen(true);
   };
 
-  const handleSendToKitchen = () => {
-    // Since items are now immediately added to OrderContext,
-    // we just need to navigate to orders page
-    window.location.href = "/orders";
-  };
-
   return (
     <div className="bg-white min-h-screen w-full overflow-x-hidden">
       {/* Header */}
       <div className="bg-white sticky top-0 z-40 px-6 py-6">
+        {/* Table Number Indicator */}
+        {tableNumber && (
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-gray-800 text-white px-4 py-2 rounded-full text-sm font-medium">
+              Table {tableNumber}
+            </div>
+          </div>
+        )}
+
         {/* Search Bar */}
         <div className="relative mb-0">
           <div className="flex gap-0">
@@ -826,7 +673,7 @@ const CustomerMenu = () => {
       </div>
 
       {/* Menu Items Grid */}
-      <div className="bg-white px-6 pb-24 pt-6">
+      <div className="bg-white px-6 pt-6 pb-24">
         {/* Popular Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -845,7 +692,7 @@ const CustomerMenu = () => {
                 onAddToCart={addToCart}
                 onRemoveFromCart={removeFromCart}
                 onItemClick={handleItemClick}
-                cartQuantity={getCartItemQuantity(item.id)}
+                cartQuantity={getItemQuantity(item.id)}
               />
             ))}
           </div>
@@ -868,7 +715,7 @@ const CustomerMenu = () => {
                 onAddToCart={addToCart}
                 onRemoveFromCart={removeFromCart}
                 onItemClick={handleItemClick}
-                cartQuantity={getCartItemQuantity(item.id)}
+                cartQuantity={getItemQuantity(item.id)}
               />
             ))}
           </div>
@@ -963,7 +810,7 @@ const CustomerMenu = () => {
 
                 {/* Add to Cart Section */}
                 <div className="flex items-center justify-between">
-                  {getCartItemQuantity(selectedItem.id) > 0 ? (
+                  {getItemQuantity(selectedItem.id) > 0 ? (
                     <div className="flex items-center gap-3">
                       <Button
                         size="sm"
@@ -973,7 +820,7 @@ const CustomerMenu = () => {
                         <Minus className="h-4 w-4" />
                       </Button>
                       <span className="text-lg font-bold min-w-[32px] text-center bg-gray-100 rounded-full px-3 py-2">
-                        {getCartItemQuantity(selectedItem.id)}
+                        {getItemQuantity(selectedItem.id)}
                       </span>
                       <Button
                         size="sm"
@@ -999,6 +846,14 @@ const CustomerMenu = () => {
         </DialogContent>
       </Dialog>
     </div>
+  );
+};
+
+const CustomerMenu = () => {
+  return (
+    <SessionGuard>
+      <CustomerMenuContent />
+    </SessionGuard>
   );
 };
 

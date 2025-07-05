@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useOrders } from "@/contexts/OrderContext";
 
@@ -42,9 +42,10 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Use orders from context if available, otherwise use prop orders or mock data
+  // Always prioritize context orders over prop orders or mock data
+  // This ensures we're always showing the most up-to-date data from the database
   const orders =
-    contextOrders.length > 0
+    contextOrders.length > 0 || loading
       ? contextOrders.map((order) => ({
           id: order.id,
           tableNumber: order.tableNumber,
@@ -92,25 +93,50 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
     orderId: string,
     newStatus: "Ready" | "In Progress" | "Completed",
   ) => {
-    console.log(`Updating order ${orderId} to status: ${newStatus}`);
+    console.log(
+      `🔄 OrdersDashboard: Updating order ${orderId} to status: ${newStatus}`,
+    );
 
-    // Map dashboard statuses to context statuses
-    const statusMap = {
-      "In Progress": "preparing" as const,
-      Ready: "ready" as const,
-      Completed: "completed" as const,
-    };
+    try {
+      // Map dashboard statuses to context statuses
+      const statusMap = {
+        "In Progress": "preparing" as const,
+        Ready: "ready" as const,
+        Completed: "completed" as const,
+      };
 
-    const contextStatus = statusMap[newStatus];
-    if (contextStatus) {
-      await updateOrderStatus(orderId, contextStatus);
+      const contextStatus = statusMap[newStatus];
+      if (contextStatus) {
+        await updateOrderStatus(orderId, contextStatus);
+        console.log(
+          `✅ OrdersDashboard: Successfully updated order ${orderId} to ${newStatus}`,
+        );
+      } else {
+        console.error(
+          `❌ OrdersDashboard: Invalid status mapping for ${newStatus}`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `❌ OrdersDashboard: Failed to update order ${orderId}:`,
+        error,
+      );
+      // Optionally show user-friendly error message
+      throw error;
     }
   };
 
   const handleRefresh = async () => {
+    console.log("🔄 OrdersDashboard: Manually refreshing orders...");
     setIsRefreshing(true);
-    await refreshOrders();
-    setTimeout(() => setIsRefreshing(false), 500);
+    try {
+      await refreshOrders();
+      console.log("✅ OrdersDashboard: Orders refreshed successfully");
+    } catch (error) {
+      console.error("❌ OrdersDashboard: Failed to refresh orders:", error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
   };
 
   return (
@@ -159,20 +185,33 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
               ) : (
                 <div className="col-span-full text-center py-10">
                   <p className="text-muted-foreground">
-                    {loading ? "Loading orders..." : "No orders found"}
+                    {loading
+                      ? "Loading orders from database..."
+                      : "No orders found"}
                   </p>
+                  {loading && (
+                    <div className="mt-4">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                    </div>
+                  )}
                   {!loading && (
-                    <Button
-                      variant="outline"
-                      onClick={handleRefresh}
-                      className="mt-4"
-                      disabled={isRefreshing}
-                    >
-                      <RefreshCw
-                        className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
-                      />
-                      Refresh Orders
-                    </Button>
+                    <div className="mt-4 space-y-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleRefresh}
+                        disabled={isRefreshing}
+                      >
+                        <RefreshCw
+                          className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+                        />
+                        Refresh Orders
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        {import.meta.env.VITE_SUPABASE_URL
+                          ? "Connected to database - orders will appear here when placed"
+                          : "Using demo data - configure database in project settings for live orders"}
+                      </p>
+                    </div>
                   )}
                 </div>
               )}
@@ -193,6 +232,20 @@ interface OrderCardProps {
 }
 
 const OrderCard = ({ order, onStatusChange }: OrderCardProps) => {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const handleStatusChange = async (
+    newStatus: "Ready" | "In Progress" | "Completed",
+  ) => {
+    setIsUpdating(true);
+    try {
+      await onStatusChange(order.id, newStatus);
+    } catch (error) {
+      console.error("Error updating order status:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case "ready":
@@ -248,18 +301,56 @@ const OrderCard = ({ order, onStatusChange }: OrderCardProps) => {
           {order.takeaway ? "Takeaway" : ""}
         </div>
         <div className="flex space-x-2">
-          {order.status !== "Completed" && (
+          {order.status === "In Progress" && (
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => onStatusChange(order.id, "Completed")}
+              onClick={() => handleStatusChange("Ready")}
+              disabled={isUpdating}
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
-              Mark Complete
+              {isUpdating ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Mark Ready"
+              )}
+            </Button>
+          )}
+          {order.status === "Ready" && (
+            <Button
+              size="sm"
+              onClick={() => handleStatusChange("Completed")}
+              disabled={isUpdating}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isUpdating ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Completing...
+                </>
+              ) : (
+                "Mark Complete"
+              )}
             </Button>
           )}
           {order.status === "In Progress" && (
-            <Button size="sm" onClick={() => onStatusChange(order.id, "Ready")}>
-              Mark Ready
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleStatusChange("Completed")}
+              disabled={isUpdating}
+              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+            >
+              {isUpdating ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Completing...
+                </>
+              ) : (
+                "Skip to Complete"
+              )}
             </Button>
           )}
         </div>

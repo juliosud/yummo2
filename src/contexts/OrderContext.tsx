@@ -58,13 +58,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentTableNumber, setCurrentTableNumber] = useState<string>("");
 
   // Convert database order to context order format
   const convertDBOrderToOrder = (dbOrder: DBOrder): Order => {
     const items: OrderItem[] =
       dbOrder.order_items?.map((item) => ({
-        id: item.id,
-        name: item.menu_item?.name || "Unknown Item",
+        id: item.menu_item_id,
+        name: item.item_name || item.menu_item?.name || "Unknown Item",
         price: item.price,
         quantity: item.quantity,
         image:
@@ -83,10 +84,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
     };
   };
 
-  // Fetch orders from database
+  // Get current table number from URL
+  const getCurrentTableNumber = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("table") || "1";
+  };
+
+  // Fetch orders from database (filtered by current table)
   const fetchOrders = async () => {
     try {
       setLoading(true);
+
+      // Get current table number
+      const tableNumber = getCurrentTableNumber();
+      setCurrentTableNumber(tableNumber);
 
       // Check if Supabase is properly configured
       if (
@@ -94,12 +105,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         !import.meta.env.VITE_SUPABASE_ANON_KEY
       ) {
         console.log(
-          "📦 OrderContext: Using mock data (database not connected)",
+          `📦 OrderContext: Using mock data for table ${tableNumber} (database not connected)`,
         );
         console.warn(
           "🔧 To enable real-time orders: Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in project settings",
         );
-        // Use mock data when Supabase is not configured
+        // Use mock data when Supabase is not configured (filtered by table)
         const mockOrders: Order[] = [
           {
             id: "mock-1",
@@ -124,7 +135,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
             total: 53.97,
             status: "preparing",
             orderTime: new Date(),
-            tableNumber: "A4",
+            tableNumber: tableNumber,
             estimatedMinutes: 25,
           },
         ];
@@ -133,32 +144,40 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
 
-      console.log("📦 OrderContext: Fetching orders from Supabase database...");
+      console.log(
+        `📦 OrderContext: Fetching orders for table ${tableNumber} from Supabase database...`,
+      );
       const { data, error } = await supabase
         .from("orders")
         .select(
           `
           *,
           order_items (
-            *,
-            menu_item:menu_items (*)
+            id,
+            menu_item_id,
+            quantity,
+            price,
+            item_name,
+            menu_item:menu_items (
+              id,
+              name,
+              image
+            )
           )
         `,
         )
+        .eq("table_number", tableNumber)
         .order("created_at", { ascending: false });
 
       if (error) {
         console.error("Error fetching orders:", error);
-        // Fallback to mock data on error
-        const mockOrders: Order[] = [];
-        setOrders(mockOrders);
+        // Fallback to empty array on error
+        setOrders([]);
         return;
       }
 
       console.log(
-        "✅ OrderContext: Successfully fetched",
-        data?.length || 0,
-        "orders from database",
+        `✅ OrderContext: Successfully fetched ${data?.length || 0} orders for table ${tableNumber} from database`,
       );
       const convertedOrders = data?.map(convertDBOrderToOrder) || [];
       setOrders(convertedOrders);
@@ -258,6 +277,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         menu_item_id: item.id,
         quantity: item.quantity,
         price: item.price,
+        item_name: item.name,
       }));
 
       const { error: itemsError } = await supabase
@@ -331,6 +351,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
           menu_item_id: item.id,
           quantity: item.quantity,
           price: item.price,
+          item_name: item.name,
         }));
 
         const { error: itemsError } = await supabase
@@ -377,7 +398,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
 
-      console.log(`Updating order ${orderId} status to ${status}`);
+      console.log(`🔄 Updating order ${orderId} status to ${status}`);
+
+      // Optimistic update - update UI immediately
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId ? { ...order, status } : order,
+        ),
+      );
 
       const { error } = await supabase
         .from("orders")
@@ -385,20 +413,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         .eq("id", orderId);
 
       if (error) {
-        console.error("Error updating order status:", error);
-        return;
+        console.error("❌ Error updating order status:", error);
+        // Revert optimistic update on error
+        await fetchOrders();
+        throw error;
       }
 
-      console.log("Order status updated successfully");
-
-      // Update local state
-      setOrders((prev) =>
-        prev.map((order) =>
-          order.id === orderId ? { ...order, status } : order,
-        ),
-      );
+      console.log("✅ Order status updated successfully in database");
     } catch (error) {
-      console.error("Error updating order status:", error);
+      console.error("❌ Error updating order status:", error);
+      throw error;
     }
   };
 
@@ -407,10 +431,28 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
     await fetchOrders();
   };
 
-  // Fetch orders on mount
+  // Fetch orders on mount and when URL changes
   useEffect(() => {
     fetchOrders();
-  }, []);
+
+    // Listen for URL changes (e.g., when navigating between different table sessions)
+    const handleUrlChange = () => {
+      const newTableNumber = getCurrentTableNumber();
+      if (newTableNumber !== currentTableNumber) {
+        console.log(
+          `🔄 OrderContext: Table changed from ${currentTableNumber} to ${newTableNumber}, refetching orders`,
+        );
+        fetchOrders();
+      }
+    };
+
+    // Listen for popstate events (back/forward navigation)
+    window.addEventListener("popstate", handleUrlChange);
+
+    return () => {
+      window.removeEventListener("popstate", handleUrlChange);
+    };
+  }, [currentTableNumber]);
 
   // Set up real-time subscription for orders
   useEffect(() => {
@@ -422,18 +464,43 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
       return;
     }
 
+    console.log("🔔 Setting up real-time subscription for orders");
+
+    const tableNumber = getCurrentTableNumber();
     const subscription = supabase
-      .channel("orders")
+      .channel(`orders_realtime_table_${tableNumber}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `table_number=eq.${tableNumber}`,
+        },
+        (payload) => {
+          console.log(
+            `🔔 Real-time order update received for table ${tableNumber}:`,
+            payload,
+          );
+          fetchOrders();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_items" },
+        (payload) => {
+          console.log(
+            `🔔 Real-time order items update received for table ${tableNumber}:`,
+            payload,
+          );
+          // Only refetch if this order item belongs to current table's orders
           fetchOrders();
         },
       )
       .subscribe();
 
     return () => {
+      console.log("🔕 Unsubscribing from real-time updates");
       subscription.unsubscribe();
     };
   }, []);

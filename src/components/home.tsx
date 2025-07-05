@@ -29,6 +29,7 @@ import AIInsightsChat from "./AIInsightsChat";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import QRCode from "qrcode";
+import { supabase } from "@/lib/supabase";
 
 interface Table {
   id: string;
@@ -122,11 +123,12 @@ const TableManagement = () => {
     const table = tables.find((t) => t.id === id);
     if (!table) return;
 
-    // Generate unique menu URL for this table
-    const baseUrl = window.location.origin;
-    const menuUrl = `${baseUrl}/menu?table=${id}&session=${Date.now()}`;
-
     try {
+      // Generate unique session code
+      const sessionCode = `${id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      const baseUrl = window.location.origin;
+      const menuUrl = `${baseUrl}/menu?table=${id}&session=${sessionCode}`;
+
       // Generate QR code
       const qrCodeDataUrl = await QRCode.toDataURL(menuUrl, {
         width: 256,
@@ -136,6 +138,26 @@ const TableManagement = () => {
           light: "#FFFFFF",
         },
       });
+
+      // Save session to database if Supabase is configured
+      if (
+        import.meta.env.VITE_SUPABASE_URL &&
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        const { error } = await supabase.from("table_sessions").insert({
+          table_id: id,
+          session_code: sessionCode,
+          is_active: true,
+          qr_code_data: qrCodeDataUrl,
+          menu_url: menuUrl,
+        });
+
+        if (error) {
+          console.error("Failed to save session to database:", error);
+        } else {
+          console.log("✅ Session saved to database:", sessionCode);
+        }
+      }
 
       setTables((prevTables) =>
         prevTables.map((t) =>
@@ -163,19 +185,44 @@ const TableManagement = () => {
     }
   };
 
-  const endSession = (id: string) => {
-    setTables((prevTables) =>
-      prevTables.map((table) =>
-        table.id === id
-          ? {
-              ...table,
-              sessionActive: false,
-              qrCode: undefined,
-              menuUrl: undefined,
-            }
-          : table,
-      ),
-    );
+  const endSession = async (id: string) => {
+    try {
+      // End all active sessions for this table in database if Supabase is configured
+      if (
+        import.meta.env.VITE_SUPABASE_URL &&
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        const { error } = await supabase
+          .from("table_sessions")
+          .update({
+            is_active: false,
+            ended_at: new Date().toISOString(),
+          })
+          .eq("table_id", id)
+          .eq("is_active", true);
+
+        if (error) {
+          console.error("Failed to end session in database:", error);
+        } else {
+          console.log("✅ Session ended in database for table:", id);
+        }
+      }
+
+      setTables((prevTables) =>
+        prevTables.map((table) =>
+          table.id === id
+            ? {
+                ...table,
+                sessionActive: false,
+                qrCode: undefined,
+                menuUrl: undefined,
+              }
+            : table,
+        ),
+      );
+    } catch (error) {
+      console.error("Failed to end session:", error);
+    }
   };
 
   const copyToClipboard = async (text: string) => {

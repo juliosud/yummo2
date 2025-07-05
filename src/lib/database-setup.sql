@@ -30,6 +30,33 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create sessions table for QR code session management
+CREATE TABLE IF NOT EXISTS table_sessions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  table_id VARCHAR(10) NOT NULL,
+  session_code VARCHAR(255) NOT NULL UNIQUE,
+  is_active BOOLEAN DEFAULT true,
+  qr_code_data TEXT,
+  menu_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ended_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Create cart table for temporary cart items
+CREATE TABLE IF NOT EXISTS cart_items (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id VARCHAR(255) NOT NULL, -- Table number + session identifier
+  table_number VARCHAR(10) NOT NULL,
+  menu_item_id UUID REFERENCES menu_items(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  price DECIMAL(10,2) NOT NULL,
+  item_name VARCHAR(255) NOT NULL,
+  item_image TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create order_items table
 CREATE TABLE IF NOT EXISTS order_items (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -46,13 +73,20 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_table_number ON orders(table_number);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_cart_items_session_id ON cart_items(session_id);
+CREATE INDEX IF NOT EXISTS idx_cart_items_table_number ON cart_items(table_number);
 CREATE INDEX IF NOT EXISTS idx_menu_items_category ON menu_items(category);
 CREATE INDEX IF NOT EXISTS idx_menu_items_available ON menu_items(available);
+CREATE INDEX IF NOT EXISTS idx_table_sessions_table_id ON table_sessions(table_id);
+CREATE INDEX IF NOT EXISTS idx_table_sessions_session_code ON table_sessions(session_code);
+CREATE INDEX IF NOT EXISTS idx_table_sessions_is_active ON table_sessions(is_active);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE menu_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE table_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public access (adjust as needed for your security requirements)
 -- Drop existing policies first to avoid conflicts
@@ -70,6 +104,16 @@ DROP POLICY IF EXISTS "Allow public read access to order_items" ON order_items;
 DROP POLICY IF EXISTS "Allow public insert access to order_items" ON order_items;
 DROP POLICY IF EXISTS "Allow public update access to order_items" ON order_items;
 DROP POLICY IF EXISTS "Allow public delete access to order_items" ON order_items;
+
+DROP POLICY IF EXISTS "Allow public read access to cart_items" ON cart_items;
+DROP POLICY IF EXISTS "Allow public insert access to cart_items" ON cart_items;
+DROP POLICY IF EXISTS "Allow public update access to cart_items" ON cart_items;
+DROP POLICY IF EXISTS "Allow public delete access to cart_items" ON cart_items;
+
+DROP POLICY IF EXISTS "Allow public read access to table_sessions" ON table_sessions;
+DROP POLICY IF EXISTS "Allow public insert access to table_sessions" ON table_sessions;
+DROP POLICY IF EXISTS "Allow public update access to table_sessions" ON table_sessions;
+DROP POLICY IF EXISTS "Allow public delete access to table_sessions" ON table_sessions;
 
 -- Menu items policies
 CREATE POLICY "Allow public read access to menu_items" ON menu_items FOR SELECT USING (true);
@@ -89,6 +133,18 @@ CREATE POLICY "Allow public insert access to order_items" ON order_items FOR INS
 CREATE POLICY "Allow public update access to order_items" ON order_items FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete access to order_items" ON order_items FOR DELETE USING (true);
 
+-- Cart items policies
+CREATE POLICY "Allow public read access to cart_items" ON cart_items FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access to cart_items" ON cart_items FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update access to cart_items" ON cart_items FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete access to cart_items" ON cart_items FOR DELETE USING (true);
+
+-- Table sessions policies
+CREATE POLICY "Allow public read access to table_sessions" ON table_sessions FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access to table_sessions" ON table_sessions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update access to table_sessions" ON table_sessions FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete access to table_sessions" ON table_sessions FOR DELETE USING (true);
+
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -105,6 +161,14 @@ CREATE TRIGGER update_menu_items_updated_at BEFORE UPDATE ON menu_items
 
 DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
 CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_cart_items_updated_at ON cart_items;
+CREATE TRIGGER update_cart_items_updated_at BEFORE UPDATE ON cart_items
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_table_sessions_updated_at ON table_sessions;
+CREATE TRIGGER update_table_sessions_updated_at BEFORE UPDATE ON table_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Clear existing menu items (optional - remove this line if you want to keep existing data)
