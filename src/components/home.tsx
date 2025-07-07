@@ -22,6 +22,7 @@ import {
   QrCode,
   Copy,
   Check,
+  Loader2,
 } from "lucide-react";
 import MenuView from "./MenuView";
 import OrdersDashboard from "./OrdersDashboard";
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import QRCode from "qrcode";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Table {
   id: string;
@@ -475,17 +477,30 @@ const TableManagement = () => {
 };
 
 const Home = () => {
-  const [activeTab, setActiveTab] = useState("orders");
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { user, profile, signOut } = useAuth();
 
-  // Mock login function
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-  };
+  // Handle logout with proper authentication
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      const { error } = await signOut();
 
-  // Mock logout function
-  const handleLogout = () => {
-    setIsLoggedIn(false);
+      if (error) {
+        console.error("Logout error:", error);
+        // Still redirect even if there's an error to ensure user is logged out
+      }
+
+      // Redirect to landing page after logout
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Fallback redirect
+      window.location.href = "/";
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const navigationItems = [
@@ -521,20 +536,19 @@ const Home = () => {
     },
   ];
 
-  if (!isLoggedIn) {
+  // This component should only render when user is authenticated
+  // The App.tsx handles redirecting unauthenticated users
+  if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="max-w-md w-full space-y-6 p-6">
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Yummo.ai Restaurant</h1>
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <h1 className="text-2xl font-bold">Loading...</h1>
             <p className="text-muted-foreground mt-2">
-              Restaurant Management System
+              Please wait while we load your dashboard
             </p>
           </div>
-          <Button onClick={handleLogin} className="w-full" size="lg">
-            <User className="mr-2 h-4 w-4" />
-            Staff Login
-          </Button>
         </div>
       </div>
     );
@@ -579,19 +593,40 @@ const Home = () => {
         {/* User Profile */}
         <div className="p-4 border-t border-gray-200">
           <div className="flex items-center gap-3 mb-3">
-            <div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center">
-              <User className="h-4 w-4" />
+            <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <User className="h-4 w-4 text-white" />
             </div>
-            <span className="text-sm font-medium">Gladina Samantha</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-medium block truncate">
+                {profile?.first_name && profile?.last_name
+                  ? `${profile.first_name} ${profile.last_name}`
+                  : profile?.email || user?.email || "User"}
+              </span>
+              {profile?.restaurant_name && (
+                <span className="text-xs text-gray-500 block truncate">
+                  {profile.restaurant_name}
+                </span>
+              )}
+            </div>
           </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleLogout}
-            className="w-full justify-start text-gray-600"
+            disabled={isLoggingOut}
+            className="w-full justify-start text-gray-600 hover:text-red-600 hover:bg-red-50"
           >
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
+            {isLoggingOut ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Signing out...
+              </>
+            ) : (
+              <>
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </>
+            )}
           </Button>
         </div>
       </div>

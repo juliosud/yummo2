@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -13,8 +14,10 @@ import {
 } from "lucide-react";
 
 const LandingPage = () => {
+  const navigate = useNavigate();
+
   const handleLoginClick = () => {
-    window.location.href = "/auth";
+    navigate("/auth");
   };
 
   return (

@@ -1,42 +1,123 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { QrCode, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { QrCode, ArrowLeft, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const AuthPage = () => {
+  const navigate = useNavigate();
+  const { signIn, signUp, loading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Form data states
+  const [loginData, setLoginData] = useState({
+    email: "",
+    password: "",
+    rememberMe: false,
+  });
+
+  const [signupData, setSignupData] = useState({
+    email: "",
+    password: "",
+    confirmPassword: "",
+    firstName: "",
+    lastName: "",
+    restaurantName: "",
+    phone: "",
+  });
 
   const handleBackToHome = () => {
-    window.location.href = "/";
+    navigate("/");
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
     setIsLoading(true);
 
-    // Simulate login process
-    setTimeout(() => {
+    try {
+      const { error } = await signIn({
+        email: loginData.email,
+        password: loginData.password,
+        rememberMe: loginData.rememberMe,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess("Login successful! Redirecting...");
+        setTimeout(() => {
+          navigate("/dashboard");
+        }, 1000);
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
       setIsLoading(false);
-      // Redirect to dashboard after successful login
-      window.location.href = "/dashboard";
-    }, 2000);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    // Validate passwords match
+    if (signupData.password !== signupData.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    // Validate password strength
+    if (signupData.password.length < 8) {
+      setError("Password must be at least 8 characters long");
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate signup process
-    setTimeout(() => {
+    try {
+      const { error } = await signUp({
+        email: signupData.email,
+        password: signupData.password,
+        firstName: signupData.firstName,
+        lastName: signupData.lastName,
+        restaurantName: signupData.restaurantName,
+        phone: signupData.phone,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess(
+          "Account created successfully! Please check your email to verify your account.",
+        );
+        // Reset form
+        setSignupData({
+          email: "",
+          password: "",
+          confirmPassword: "",
+          firstName: "",
+          lastName: "",
+          restaurantName: "",
+          phone: "",
+        });
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
       setIsLoading(false);
-      // Redirect to dashboard after successful signup
-      window.location.href = "/dashboard";
-    }, 2000);
+    }
   };
 
   return (
@@ -75,6 +156,25 @@ const AuthPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
+            {/* Error/Success Messages */}
+            {error && (
+              <Alert className="mb-4 border-red-200 bg-red-50">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-800">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {success && (
+              <Alert className="mb-4 border-green-200 bg-green-50">
+                <AlertCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  {success}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Tabs defaultValue="login" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="login" className="font-medium">
@@ -101,6 +201,10 @@ const AuthPage = () => {
                       placeholder="Enter your email"
                       required
                       className="h-11"
+                      value={loginData.email}
+                      onChange={(e) =>
+                        setLoginData({ ...loginData, email: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -117,6 +221,13 @@ const AuthPage = () => {
                         placeholder="Enter your password"
                         required
                         className="h-11 pr-10"
+                        value={loginData.password}
+                        onChange={(e) =>
+                          setLoginData({
+                            ...loginData,
+                            password: e.target.value,
+                          })
+                        }
                       />
                       <Button
                         type="button"
@@ -135,7 +246,17 @@ const AuthPage = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <label className="flex items-center space-x-2 text-sm">
-                      <input type="checkbox" className="rounded" />
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        checked={loginData.rememberMe}
+                        onChange={(e) =>
+                          setLoginData({
+                            ...loginData,
+                            rememberMe: e.target.checked,
+                          })
+                        }
+                      />
                       <span className="text-gray-600">Remember me</span>
                     </label>
                     <a
@@ -147,10 +268,10 @@ const AuthPage = () => {
                   </div>
                   <Button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || loading}
                     className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all duration-200"
                   >
-                    {isLoading ? "Signing In..." : "Sign In"}
+                    {isLoading || loading ? "Signing In..." : "Sign In"}
                   </Button>
                 </form>
               </TabsContent>
@@ -172,6 +293,13 @@ const AuthPage = () => {
                         placeholder="John"
                         required
                         className="h-11"
+                        value={signupData.firstName}
+                        onChange={(e) =>
+                          setSignupData({
+                            ...signupData,
+                            firstName: e.target.value,
+                          })
+                        }
                       />
                     </div>
                     <div className="space-y-2">
@@ -187,6 +315,13 @@ const AuthPage = () => {
                         placeholder="Doe"
                         required
                         className="h-11"
+                        value={signupData.lastName}
+                        onChange={(e) =>
+                          setSignupData({
+                            ...signupData,
+                            lastName: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
@@ -195,14 +330,35 @@ const AuthPage = () => {
                       htmlFor="restaurant-name"
                       className="text-sm font-medium"
                     >
-                      Restaurant Name
+                      Restaurant Name (Optional)
                     </Label>
                     <Input
                       id="restaurant-name"
                       type="text"
                       placeholder="Your Restaurant Name"
-                      required
                       className="h-11"
+                      value={signupData.restaurantName}
+                      onChange={(e) =>
+                        setSignupData({
+                          ...signupData,
+                          restaurantName: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-sm font-medium">
+                      Phone Number (Optional)
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      className="h-11"
+                      value={signupData.phone}
+                      onChange={(e) =>
+                        setSignupData({ ...signupData, phone: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -218,6 +374,10 @@ const AuthPage = () => {
                       placeholder="Enter your email"
                       required
                       className="h-11"
+                      value={signupData.email}
+                      onChange={(e) =>
+                        setSignupData({ ...signupData, email: e.target.value })
+                      }
                     />
                   </div>
                   <div className="space-y-2">
@@ -231,9 +391,17 @@ const AuthPage = () => {
                       <Input
                         id="signup-password"
                         type={showPassword ? "text" : "password"}
-                        placeholder="Create a password"
+                        placeholder="Create a password (min. 8 characters)"
                         required
+                        minLength={8}
                         className="h-11 pr-10"
+                        value={signupData.password}
+                        onChange={(e) =>
+                          setSignupData({
+                            ...signupData,
+                            password: e.target.value,
+                          })
+                        }
                       />
                       <Button
                         type="button"
@@ -264,6 +432,13 @@ const AuthPage = () => {
                         placeholder="Confirm your password"
                         required
                         className="h-11 pr-10"
+                        value={signupData.confirmPassword}
+                        onChange={(e) =>
+                          setSignupData({
+                            ...signupData,
+                            confirmPassword: e.target.value,
+                          })
+                        }
                       />
                       <Button
                         type="button"
@@ -297,10 +472,12 @@ const AuthPage = () => {
                   </div>
                   <Button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || loading}
                     className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all duration-200"
                   >
-                    {isLoading ? "Creating Account..." : "Create Account"}
+                    {isLoading || loading
+                      ? "Creating Account..."
+                      : "Create Account"}
                   </Button>
                 </form>
               </TabsContent>
