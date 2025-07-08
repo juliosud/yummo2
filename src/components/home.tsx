@@ -405,38 +405,40 @@ const TableManagement = () => {
 
       {/* QR Code Dialog */}
       <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="h-5 w-5" />
+        <DialogContent className="w-[95vw] max-w-sm mx-auto max-h-[90vh] overflow-hidden p-0 gap-0">
+          <DialogHeader className="p-3 pb-2 flex-shrink-0">
+            <DialogTitle className="flex items-center justify-center gap-2 text-base">
+              <QrCode className="h-4 w-4" />
               QR Code for {selectedTable?.name}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col items-center space-y-4">
+          <div className="px-3 pb-3 flex flex-col min-h-0 overflow-y-auto">
             {selectedTable?.qrCode && (
-              <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
-                <img
-                  src={selectedTable.qrCode}
-                  alt={`QR Code for ${selectedTable.name}`}
-                  className="w-48 h-48"
-                />
+              <div className="flex justify-center mb-3 flex-shrink-0">
+                <div className="bg-white p-2 rounded-lg border border-gray-200 inline-block">
+                  <img
+                    src={selectedTable.qrCode}
+                    alt={`QR Code for ${selectedTable.name}`}
+                    className="w-32 h-32 sm:w-40 sm:h-40 block"
+                  />
+                </div>
               </div>
             )}
-            <div className="text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
+            <div className="text-center space-y-2 mb-3 flex-shrink-0">
+              <p className="text-xs sm:text-sm text-muted-foreground leading-tight">
                 Customers can scan this QR code to access the menu for{" "}
                 {selectedTable?.name}
               </p>
               {selectedTable?.menuUrl && (
-                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded border">
-                  <code className="text-xs flex-1 truncate">
+                <div className="flex items-center gap-1 p-2 bg-gray-50 rounded-lg border text-left">
+                  <code className="text-xs flex-1 truncate min-w-0">
                     {selectedTable.menuUrl}
                   </code>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => copyToClipboard(selectedTable.menuUrl!)}
-                    className="h-6 w-6 p-0"
+                    className="h-5 w-5 p-0 flex-shrink-0"
                   >
                     {copied ? (
                       <Check className="h-3 w-3 text-green-600" />
@@ -447,11 +449,11 @@ const TableManagement = () => {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 w-full">
+            <div className="flex gap-2 flex-shrink-0">
               <Button
                 variant="outline"
                 onClick={() => setShowQRDialog(false)}
-                className="flex-1"
+                className="flex-1 h-8 text-xs"
               >
                 Close
               </Button>
@@ -463,7 +465,7 @@ const TableManagement = () => {
                     link.href = selectedTable.qrCode;
                     link.click();
                   }}
-                  className="flex-1"
+                  className="flex-1 h-8 text-xs"
                 >
                   Download QR
                 </Button>

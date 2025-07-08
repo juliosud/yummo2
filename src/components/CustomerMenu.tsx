@@ -560,15 +560,12 @@ const CustomerMenuContent = () => {
     };
   }, []);
 
-  // Filter available menu items based on search query and active category
+  // Filter available menu items based on active category only
   const availableItems = menuItems.filter((item) => item.available);
   const filteredItems = availableItems.filter((item) => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
       activeCategory === "all" || item.category === activeCategory;
-    return matchesSearch && matchesCategory;
+    return matchesCategory;
   });
 
   // Get unique categories for the tabs
@@ -603,38 +600,14 @@ const CustomerMenuContent = () => {
       <div className="bg-white sticky top-0 z-40 px-6 py-6">
         {/* Table Number Indicator */}
         {tableNumber && (
-          <div className="flex items-center justify-center mb-4">
+          <div className="flex items-center justify-center mb-6">
             <div className="bg-gray-800 text-white px-4 py-2 rounded-full text-sm font-medium">
               Table {tableNumber}
             </div>
           </div>
         )}
 
-        {/* Search Bar */}
-        <div className="relative mb-0">
-          <div className="flex gap-0">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type="search"
-                placeholder="Search"
-                className="pl-12 h-14 text-base bg-gray-50 border-0 rounded-l-2xl rounded-r-none"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <Button
-              size="sm"
-              className="h-14 px-4 bg-gray-800 hover:bg-gray-900 rounded-r-2xl rounded-l-none"
-            >
-              <Filter className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Category Tabs - Fixed Sticky Position */}
-      <div className="bg-white px-6 pt-2 pb-2 sticky top-[116px] z-30">
+        {/* Category Tabs - Directly below table name */}
         <Tabs
           key={activeCategory} // Force re-render when category changes
           defaultValue="all"
@@ -728,11 +701,10 @@ const CustomerMenuContent = () => {
             <Button
               variant="outline"
               onClick={() => {
-                setSearchQuery("");
                 setActiveCategory("all");
               }}
             >
-              Clear filters
+              Show all items
             </Button>
           </div>
         )}

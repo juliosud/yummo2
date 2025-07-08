@@ -1,23 +1,9 @@
 import React, { useState, useEffect } from "react";
-import {
-  ArrowLeft,
-  Clock,
-  CheckCircle,
-  Package,
-  CreditCard,
-  X,
-  ChefHat,
-  Loader2,
-} from "lucide-react";
+import { Clock, CheckCircle, Package, ChefHat, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 import { useOrders } from "@/contexts/OrderContext";
 import { useCart } from "@/contexts/CartContext";
 import BottomNavigation from "@/components/BottomNavigation";
@@ -45,10 +31,7 @@ const OrdersPageContent = () => {
   const { orders, updateOrderStatus, addOrder } = useOrders();
   const { cartItems, getTotalItems, getTotalPrice, clearCart } = useCart();
   const [tableNumber, setTableNumber] = useState("");
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [selectedTip, setSelectedTip] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Debug: Log orders to see their structure
   useEffect(() => {
@@ -119,31 +102,19 @@ const OrdersPageContent = () => {
     }
   };
 
-  const getTotalAmount = () => {
-    return orders.reduce((total, order) => total + order.total, 0);
-  };
-
-  const getSubtotal = () => {
-    return getTotalAmount();
-  };
-
-  const getTaxAmount = () => {
-    return getSubtotal() * 0.08; // 8% tax
-  };
-
-  const getTipAmount = () => {
-    return getSubtotal() * (selectedTip / 100);
-  };
-
-  const getFinalTotal = () => {
-    return getSubtotal() + getTaxAmount() + getTipAmount();
-  };
-
   const handleSendToKitchen = async () => {
     setIsLoading(true);
 
     try {
-      // If there are cart items, convert them to an order first
+      // Immediately update all pending orders to "preparing" status for instant UI feedback
+      const pendingOrders = orders.filter(
+        (order) => order.status === "pending",
+      );
+      pendingOrders.forEach((order) => {
+        updateOrderStatus(order.id, "preparing");
+      });
+
+      // If there are cart items, convert them to an order with "preparing" status
       if (cartItems.length > 0) {
         console.log("Sending cart to kitchen:", cartItems);
 
@@ -159,7 +130,8 @@ const OrdersPageContent = () => {
         // Calculate total
         const total = getTotalPrice();
 
-        // Create order in the orders table with "preparing" status
+        // Create order in the orders table - it will be created with "pending" status
+        // but we'll immediately update it to "preparing"
         await addOrder({
           items: orderItems,
           total: total,
@@ -171,84 +143,16 @@ const OrdersPageContent = () => {
         console.log("Cart items sent to kitchen successfully, cart cleared");
       }
 
-      // Update all pending orders to "preparing" status
-      orders.forEach((order) => {
-        if (order.status === "pending") {
-          updateOrderStatus(order.id, "preparing");
-        }
-      });
-
-      setIsLoading(false);
-      setShowConfirmation(true);
-      setShowPaymentDialog(true);
-
-      // Hide confirmation after 3 seconds and close dialog
-      setTimeout(() => {
-        setShowConfirmation(false);
-        setShowPaymentDialog(false);
-      }, 3000);
+      console.log("Order sent to kitchen successfully!");
     } catch (error) {
       console.error("Failed to send order to kitchen:", error);
-      setIsLoading(false);
-      // Optionally show error message to user
-    }
-  };
-
-  const handleConfirmSendToKitchen = async () => {
-    setIsLoading(true);
-
-    try {
-      // If there are cart items, convert them to an order first
-      if (cartItems.length > 0) {
-        console.log("Sending cart to kitchen:", cartItems);
-
-        // Convert cart items to order items format
-        const orderItems = cartItems.map((cartItem) => ({
-          id: cartItem.menuItemId,
-          name: cartItem.name,
-          price: cartItem.price,
-          quantity: cartItem.quantity,
-          image: cartItem.image,
-        }));
-
-        // Calculate total
-        const total = getTotalPrice();
-
-        // Create order in the orders table
-        await addOrder({
-          items: orderItems,
-          total: total,
-          tableNumber: tableNumber || "1",
-        });
-
-        // Clear the cart after successful order creation
-        await clearCart();
-        console.log("Cart items sent to kitchen successfully, cart cleared");
-      }
-
-      // Update all pending orders to "preparing" status
-      orders.forEach((order) => {
-        if (order.status === "pending") {
-          updateOrderStatus(order.id, "preparing");
-        }
-      });
-
-      setIsLoading(false);
-      setShowConfirmation(true);
-
-      // Hide confirmation after 3 seconds and close dialog
+    } finally {
+      // Add a small delay to show the loading state and fade effect
       setTimeout(() => {
-        setShowConfirmation(false);
-        setShowPaymentDialog(false);
-      }, 3000);
-    } catch (error) {
-      console.error("Failed to send order to kitchen:", error);
-      setIsLoading(false);
-      // Optionally show error message to user
+        setIsLoading(false);
+      }, 800);
     }
   };
-
-  const tipOptions = [15, 20, 25];
 
   return (
     <div className="bg-white min-h-screen w-full">
@@ -484,11 +388,13 @@ const OrdersPageContent = () => {
                 (cartItems.length === 0 &&
                   !orders.some((order) => order.status === "pending"))
               }
-              className={`w-full rounded-2xl py-4 text-lg font-semibold flex items-center justify-center gap-3 ${
-                cartItems.length > 0 ||
-                orders.some((order) => order.status === "pending")
-                  ? "bg-gray-900 hover:bg-black text-white"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              className={`w-full rounded-2xl py-4 text-lg font-semibold flex items-center justify-center gap-3 transition-all duration-300 ${
+                isLoading
+                  ? "bg-gray-600 text-white opacity-60 cursor-not-allowed"
+                  : cartItems.length > 0 ||
+                      orders.some((order) => order.status === "pending")
+                    ? "bg-gray-900 hover:bg-black text-white"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
               }`}
             >
               {isLoading ? (
@@ -506,84 +412,6 @@ const OrdersPageContent = () => {
           </div>
         </div>
       )}
-
-      {/* Send to Kitchen Dialog */}
-      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="max-w-sm mx-auto rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-center mb-6">
-              {showConfirmation ? "Order Sent!" : "Send to Kitchen"}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            {showConfirmation ? (
-              <div className="text-center py-8">
-                <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                <p className="text-lg font-medium text-gray-900 mb-2">
-                  Your order has been sent to the kitchen!
-                </p>
-                <p className="text-gray-600">
-                  The kitchen will start preparing your order shortly.
-                </p>
-              </div>
-            ) : isLoading ? (
-              <div className="text-center py-8">
-                <Loader2 className="w-16 h-16 text-gray-900 mx-auto mb-4 animate-spin" />
-                <p className="text-lg font-medium text-gray-900 mb-2">
-                  Sending to kitchen...
-                </p>
-                <p className="text-gray-600">
-                  Please wait while we process your order.
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Order Summary */}
-                <div className="space-y-3">
-                  <div className="flex justify-between text-base">
-                    <span className="text-gray-600">Total Items</span>
-                    <span className="font-medium">
-                      {getTotalItems() +
-                        orders.reduce(
-                          (total, order) =>
-                            total +
-                            order.items.reduce(
-                              (sum, item) => sum + item.quantity,
-                              0,
-                            ),
-                          0,
-                        )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-base">
-                    <span className="text-gray-600">Table Number</span>
-                    <span className="font-medium">#{tableNumber}</span>
-                  </div>
-                  <div className="border-t pt-3">
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Order Total</span>
-                      <span>
-                        ${(getTotalPrice() + getTotalAmount()).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Confirm Send to Kitchen Button */}
-                <Button
-                  onClick={handleConfirmSendToKitchen}
-                  disabled={isLoading}
-                  className="w-full bg-gray-900 hover:bg-black text-white rounded-2xl py-4 text-lg font-semibold flex items-center justify-center gap-3"
-                >
-                  <ChefHat className="w-5 h-5" />
-                  Confirm Send to Kitchen
-                </Button>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Bottom Navigation */}
       <BottomNavigation activeTab="orders" />
