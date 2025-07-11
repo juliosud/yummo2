@@ -30,6 +30,19 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create tables table for restaurant table management
+CREATE TABLE IF NOT EXISTS tables (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  table_id VARCHAR(10) NOT NULL UNIQUE,
+  name VARCHAR(100) NOT NULL,
+  seats INTEGER NOT NULL DEFAULT 4,
+  status VARCHAR(20) DEFAULT 'available' CHECK (status IN ('available', 'occupied', 'reserved')),
+  x_position DECIMAL(10,2) DEFAULT 50,
+  y_position DECIMAL(10,2) DEFAULT 50,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create sessions table for QR code session management
 CREATE TABLE IF NOT EXISTS table_sessions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -77,6 +90,8 @@ CREATE INDEX IF NOT EXISTS idx_cart_items_session_id ON cart_items(session_id);
 CREATE INDEX IF NOT EXISTS idx_cart_items_table_number ON cart_items(table_number);
 CREATE INDEX IF NOT EXISTS idx_menu_items_category ON menu_items(category);
 CREATE INDEX IF NOT EXISTS idx_menu_items_available ON menu_items(available);
+CREATE INDEX IF NOT EXISTS idx_tables_table_id ON tables(table_id);
+CREATE INDEX IF NOT EXISTS idx_tables_status ON tables(status);
 CREATE INDEX IF NOT EXISTS idx_table_sessions_table_id ON table_sessions(table_id);
 CREATE INDEX IF NOT EXISTS idx_table_sessions_session_code ON table_sessions(session_code);
 CREATE INDEX IF NOT EXISTS idx_table_sessions_is_active ON table_sessions(is_active);
@@ -86,6 +101,7 @@ ALTER TABLE menu_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE table_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public access (adjust as needed for your security requirements)
@@ -109,6 +125,11 @@ DROP POLICY IF EXISTS "Allow public read access to cart_items" ON cart_items;
 DROP POLICY IF EXISTS "Allow public insert access to cart_items" ON cart_items;
 DROP POLICY IF EXISTS "Allow public update access to cart_items" ON cart_items;
 DROP POLICY IF EXISTS "Allow public delete access to cart_items" ON cart_items;
+
+DROP POLICY IF EXISTS "Allow public read access to tables" ON tables;
+DROP POLICY IF EXISTS "Allow public insert access to tables" ON tables;
+DROP POLICY IF EXISTS "Allow public update access to tables" ON tables;
+DROP POLICY IF EXISTS "Allow public delete access to tables" ON tables;
 
 DROP POLICY IF EXISTS "Allow public read access to table_sessions" ON table_sessions;
 DROP POLICY IF EXISTS "Allow public insert access to table_sessions" ON table_sessions;
@@ -139,6 +160,12 @@ CREATE POLICY "Allow public insert access to cart_items" ON cart_items FOR INSER
 CREATE POLICY "Allow public update access to cart_items" ON cart_items FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete access to cart_items" ON cart_items FOR DELETE USING (true);
 
+-- Tables policies
+CREATE POLICY "Allow public read access to tables" ON tables FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access to tables" ON tables FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update access to tables" ON tables FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete access to tables" ON tables FOR DELETE USING (true);
+
 -- Table sessions policies
 CREATE POLICY "Allow public read access to table_sessions" ON table_sessions FOR SELECT USING (true);
 CREATE POLICY "Allow public insert access to table_sessions" ON table_sessions FOR INSERT WITH CHECK (true);
@@ -167,6 +194,10 @@ DROP TRIGGER IF EXISTS update_cart_items_updated_at ON cart_items;
 CREATE TRIGGER update_cart_items_updated_at BEFORE UPDATE ON cart_items
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_tables_updated_at ON tables;
+CREATE TRIGGER update_tables_updated_at BEFORE UPDATE ON tables
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 DROP TRIGGER IF EXISTS update_table_sessions_updated_at ON table_sessions;
 CREATE TRIGGER update_table_sessions_updated_at BEFORE UPDATE ON table_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -188,6 +219,18 @@ SELECT * FROM (
   ('Fresh Fruit Smoothie', 'Refreshing smoothie with seasonal fruits', 7.50, 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&q=80', 'drinks', 5, 4.7, true)
 ) AS v(name, description, price, image, category, prep_time, rating, available)
 WHERE NOT EXISTS (SELECT 1 FROM menu_items WHERE menu_items.name = v.name);
+
+-- Insert initial tables (only if table is empty)
+INSERT INTO tables (table_id, name, seats, status, x_position, y_position)
+SELECT * FROM (
+  VALUES
+  ('1', 'Table 1', 4, 'available', 50, 50),
+  ('2', 'Table 2', 2, 'available', 200, 50),
+  ('3', 'Table 3', 6, 'available', 350, 50),
+  ('4', 'Table 4', 4, 'available', 50, 200),
+  ('5', 'Table 5', 8, 'available', 200, 200)
+) AS v(table_id, name, seats, status, x_position, y_position)
+WHERE NOT EXISTS (SELECT 1 FROM tables WHERE tables.table_id = v.table_id);
 
 -- Insert some sample orders for testing (optional)
 INSERT INTO orders (table_number, status, total, estimated_minutes, customer_name, notes)

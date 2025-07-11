@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +35,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 interface Table {
   id: string;
+  table_id: string;
   name: string;
   seats: number;
   status: "available" | "occupied" | "reserved";
@@ -46,90 +47,339 @@ interface Table {
 }
 
 const TableManagement = () => {
-  const [tables, setTables] = useState<Table[]>([
-    {
-      id: "1",
-      name: "Table 1",
-      seats: 4,
-      status: "available",
-      x: 50,
-      y: 50,
-      sessionActive: false,
-    },
-    {
-      id: "2",
-      name: "Table 2",
-      seats: 2,
-      status: "occupied",
-      x: 200,
-      y: 50,
-      sessionActive: false,
-    },
-    {
-      id: "3",
-      name: "Table 3",
-      seats: 6,
-      status: "available",
-      x: 350,
-      y: 50,
-      sessionActive: false,
-    },
-    {
-      id: "4",
-      name: "Table 4",
-      seats: 4,
-      status: "reserved",
-      x: 50,
-      y: 200,
-      sessionActive: false,
-    },
-    {
-      id: "5",
-      name: "Table 5",
-      seats: 8,
-      status: "available",
-      x: 200,
-      y: 200,
-      sessionActive: false,
-    },
-  ]);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [showQRDialog, setShowQRDialog] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<
+    Record<string, { qrCode: string; menuUrl: string }>
+  >({});
+  const [pendingUpdates, setPendingUpdates] = useState<
+    Record<string, { x: number; y: number }>
+  >({});
+  const [isSaving, setIsSaving] = useState(false);
 
-  const addTable = () => {
-    const newTable: Table = {
-      id: Date.now().toString(),
-      name: `Table ${tables.length + 1}`,
-      seats: 4,
-      status: "available",
-      x: Math.random() * 400,
-      y: Math.random() * 300,
-      sessionActive: false,
-    };
-    setTables([...tables, newTable]);
+  // Fetch tables from database
+  const fetchTables = async () => {
+    try {
+      setLoading(true);
+
+      // Check if Supabase is configured
+      if (
+        !import.meta.env.VITE_SUPABASE_URL ||
+        !import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        console.log(
+          "🏪 TableManagement: Using mock tables (database not connected)",
+        );
+        // Use mock data when Supabase is not configured
+        const mockTables: Table[] = [
+          {
+            id: "1",
+            table_id: "1",
+            name: "Table 1",
+            seats: 4,
+            status: "available",
+            x: 50,
+            y: 50,
+            sessionActive: false,
+          },
+          {
+            id: "2",
+            table_id: "2",
+            name: "Table 2",
+            seats: 2,
+            status: "available",
+            x: 200,
+            y: 50,
+            sessionActive: false,
+          },
+          {
+            id: "3",
+            table_id: "3",
+            name: "Table 3",
+            seats: 6,
+            status: "available",
+            x: 350,
+            y: 50,
+            sessionActive: false,
+          },
+        ];
+        setTables(mockTables);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("tables")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching tables:", error);
+        setTables([]);
+        return;
+      }
+
+      // Convert database format to component format
+      const convertedTables: Table[] =
+        data?.map((table) => ({
+          id: table.id,
+          table_id: table.table_id,
+          name: table.name,
+          seats: table.seats,
+          status: table.status,
+          x: Number(table.x_position) || 50, // Ensure it's a number, default to 50
+          y: Number(table.y_position) || 50, // Ensure it's a number, default to 50
+          sessionActive: false, // Will be updated by checking active sessions
+        })) || [];
+
+      console.log(
+        "📍 Loaded table positions from database:",
+        convertedTables.map((t) => `${t.name}: (${t.x}, ${t.y})`).join(", "),
+      );
+
+      // Verify positions are being applied correctly
+      convertedTables.forEach((table) => {
+        console.log(
+          `✅ Table ${table.name} positioned at x:${table.x}, y:${table.y}`,
+        );
+      });
+
+      setTables(convertedTables);
+      console.log(
+        "✅ TableManagement: Loaded",
+        convertedTables.length,
+        "tables from database",
+      );
+
+      // Check for active sessions
+      await checkActiveSessions(convertedTables);
+    } catch (error) {
+      console.error("Error fetching tables:", error);
+      setTables([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Check for active sessions
+  const checkActiveSessions = async (tablesToCheck: Table[]) => {
+    if (
+      !import.meta.env.VITE_SUPABASE_URL ||
+      !import.meta.env.VITE_SUPABASE_ANON_KEY
+    ) {
+      return;
+    }
+
+    try {
+      const { data: sessions, error } = await supabase
+        .from("table_sessions")
+        .select("*")
+        .eq("is_active", true);
+
+      if (error) {
+        console.error("Error fetching active sessions:", error);
+        return;
+      }
+
+      const sessionMap: Record<string, { qrCode: string; menuUrl: string }> =
+        {};
+      const updatedTables = tablesToCheck.map((table) => {
+        const activeSession = sessions?.find(
+          (s) => s.table_id === table.table_id,
+        );
+        if (activeSession) {
+          sessionMap[table.table_id] = {
+            qrCode: activeSession.qr_code_data || "",
+            menuUrl: activeSession.menu_url || "",
+          };
+          return { ...table, sessionActive: true };
+        }
+        return table;
+      });
+
+      setActiveSessions(sessionMap);
+      setTables(updatedTables);
+    } catch (error) {
+      console.error("Error checking active sessions:", error);
+    }
+  };
+
+  const addTable = async () => {
+    try {
+      const nextTableNumber = (tables.length + 1).toString();
+      const newTableData = {
+        table_id: nextTableNumber,
+        name: `Table ${nextTableNumber}`,
+        seats: 4,
+        status: "available" as const,
+        x_position: Math.random() * 400,
+        y_position: Math.random() * 300,
+      };
+
+      // Check if Supabase is configured
+      if (
+        !import.meta.env.VITE_SUPABASE_URL ||
+        !import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        console.log("Supabase not configured, adding mock table");
+        const newTable: Table = {
+          id: Date.now().toString(),
+          table_id: nextTableNumber,
+          name: newTableData.name,
+          seats: newTableData.seats,
+          status: newTableData.status,
+          x: Number(newTableData.x_position) || 50,
+          y: Number(newTableData.y_position) || 50,
+          sessionActive: false,
+        };
+        setTables([...tables, newTable]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("tables")
+        .insert(newTableData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error adding table:", error);
+        return;
+      }
+
+      const newTable: Table = {
+        id: data.id,
+        table_id: data.table_id,
+        name: data.name,
+        seats: data.seats,
+        status: data.status,
+        x: Number(data.x_position) || 50,
+        y: Number(data.y_position) || 50,
+        sessionActive: false,
+      };
+
+      setTables([...tables, newTable]);
+      console.log("✅ Table added successfully:", newTable.name);
+    } catch (error) {
+      console.error("Error adding table:", error);
+    }
   };
 
   const updateTablePosition = (id: string, x: number, y: number) => {
+    // Update local state immediately for smooth UX
     setTables((prevTables) =>
       prevTables.map((table) => (table.id === id ? { ...table, x, y } : table)),
     );
+
+    // Track pending updates for batch save
+    setPendingUpdates((prev) => ({
+      ...prev,
+      [id]: { x, y },
+    }));
+
+    console.log(`📍 Table position updated locally: ID=${id}, x=${x}, y=${y}`);
   };
 
-  const deleteTable = (id: string) => {
-    setTables(tables.filter((table) => table.id !== id));
+  const saveAllPositions = async () => {
+    if (Object.keys(pendingUpdates).length === 0) {
+      console.log("No position changes to save");
+      setIsEditMode(false);
+      return;
+    }
+
+    setIsSaving(true);
+    console.log(
+      `🔄 Saving ${Object.keys(pendingUpdates).length} table position updates to database`,
+    );
+
+    try {
+      // Check if Supabase is configured
+      if (
+        !import.meta.env.VITE_SUPABASE_URL ||
+        !import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        console.log("📍 Mock mode: All table positions saved locally");
+        setPendingUpdates({});
+        setIsEditMode(false);
+        setIsSaving(false);
+        return;
+      }
+
+      // Update all tables in database
+      const updatePromises = Object.entries(pendingUpdates).map(
+        async ([tableId, position]) => {
+          const { error } = await supabase
+            .from("tables")
+            .update({ x_position: position.x, y_position: position.y })
+            .eq("id", tableId);
+
+          if (error) {
+            console.error(`❌ Error updating table ${tableId}:`, error);
+            throw error;
+          }
+
+          console.log(
+            `✅ Table ${tableId} position saved: (${position.x}, ${position.y})`,
+          );
+          return { tableId, success: true };
+        },
+      );
+
+      await Promise.all(updatePromises);
+
+      console.log("✅ All table positions saved successfully to database");
+      setPendingUpdates({});
+      setIsEditMode(false);
+    } catch (error) {
+      console.error("❌ Error saving table positions:", error);
+      // Revert to database state on error
+      await fetchTables();
+      setPendingUpdates({});
+      alert("Failed to save table positions. Changes have been reverted.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const startSession = async (id: string) => {
-    const table = tables.find((t) => t.id === id);
+  const deleteTable = async (id: string) => {
+    try {
+      // Check if Supabase is configured
+      if (
+        !import.meta.env.VITE_SUPABASE_URL ||
+        !import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) {
+        console.log("Supabase not configured, removing mock table");
+        setTables(tables.filter((table) => table.id !== id));
+        return;
+      }
+
+      const { error } = await supabase.from("tables").delete().eq("id", id);
+
+      if (error) {
+        console.error("Error deleting table:", error);
+        return;
+      }
+
+      setTables(tables.filter((table) => table.id !== id));
+      console.log("✅ Table deleted successfully");
+    } catch (error) {
+      console.error("Error deleting table:", error);
+    }
+  };
+
+  const startSession = async (tableId: string) => {
+    const table = tables.find((t) => t.id === tableId);
     if (!table) return;
 
     try {
-      // Generate unique session code
-      const sessionCode = `${id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      // Generate unique session code using table_id instead of id
+      const sessionCode = `${table.table_id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
       const baseUrl = window.location.origin;
-      const menuUrl = `${baseUrl}/menu?table=${id}&session=${sessionCode}`;
+      const menuUrl = `${baseUrl}/menu?table=${table.table_id}&session=${sessionCode}`;
 
       // Generate QR code
       const qrCodeDataUrl = await QRCode.toDataURL(menuUrl, {
@@ -146,29 +396,43 @@ const TableManagement = () => {
         import.meta.env.VITE_SUPABASE_URL &&
         import.meta.env.VITE_SUPABASE_ANON_KEY
       ) {
-        const { error } = await supabase.from("table_sessions").insert({
-          table_id: id,
-          session_code: sessionCode,
-          is_active: true,
-          qr_code_data: qrCodeDataUrl,
-          menu_url: menuUrl,
-        });
+        console.log("🔄 Starting session for table:", table.table_id);
+        const { data, error } = await supabase
+          .from("table_sessions")
+          .insert({
+            table_id: table.table_id, // Use table_id instead of id
+            session_code: sessionCode,
+            is_active: true,
+            qr_code_data: qrCodeDataUrl,
+            menu_url: menuUrl,
+          })
+          .select()
+          .single();
 
         if (error) {
-          console.error("Failed to save session to database:", error);
+          console.error("❌ Failed to save session to database:", error);
+          alert(`Failed to start session: ${error.message}`);
+          return;
         } else {
-          console.log("✅ Session saved to database:", sessionCode);
+          console.log("✅ Session saved to database:", data);
         }
       }
 
+      // Update active sessions state
+      setActiveSessions((prev) => ({
+        ...prev,
+        [table.table_id]: {
+          qrCode: qrCodeDataUrl,
+          menuUrl: menuUrl,
+        },
+      }));
+
       setTables((prevTables) =>
         prevTables.map((t) =>
-          t.id === id
+          t.id === tableId
             ? {
                 ...t,
                 sessionActive: true,
-                qrCode: qrCodeDataUrl,
-                menuUrl: menuUrl,
               }
             : t,
         ),
@@ -183,47 +447,66 @@ const TableManagement = () => {
       setSelectedTable(updatedTable);
       setShowQRDialog(true);
     } catch (error) {
-      console.error("Failed to generate QR code:", error);
+      console.error("❌ Failed to generate QR code:", error);
+      alert(`Failed to start session: ${error}`);
     }
   };
 
-  const endSession = async (id: string) => {
+  const endSession = async (tableId: string) => {
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return;
+
     try {
       // End all active sessions for this table in database if Supabase is configured
       if (
         import.meta.env.VITE_SUPABASE_URL &&
         import.meta.env.VITE_SUPABASE_ANON_KEY
       ) {
-        const { error } = await supabase
+        console.log("🔄 Ending session for table:", table.table_id);
+        const { data, error } = await supabase
           .from("table_sessions")
           .update({
             is_active: false,
             ended_at: new Date().toISOString(),
           })
-          .eq("table_id", id)
-          .eq("is_active", true);
+          .eq("table_id", table.table_id) // Use table_id instead of id
+          .eq("is_active", true)
+          .select();
 
         if (error) {
-          console.error("Failed to end session in database:", error);
+          console.error("❌ Failed to end session in database:", error);
+          alert(`Failed to end session: ${error.message}`);
+          return;
         } else {
-          console.log("✅ Session ended in database for table:", id);
+          console.log(
+            "✅ Session ended in database for table:",
+            table.table_id,
+            "Updated records:",
+            data?.length || 0,
+          );
         }
       }
 
+      // Remove from active sessions
+      setActiveSessions((prev) => {
+        const updated = { ...prev };
+        delete updated[table.table_id];
+        return updated;
+      });
+
       setTables((prevTables) =>
-        prevTables.map((table) =>
-          table.id === id
+        prevTables.map((t) =>
+          t.id === tableId
             ? {
-                ...table,
+                ...t,
                 sessionActive: false,
-                qrCode: undefined,
-                menuUrl: undefined,
               }
-            : table,
+            : t,
         ),
       );
     } catch (error) {
-      console.error("Failed to end session:", error);
+      console.error("❌ Failed to end session:", error);
+      alert(`Failed to end session: ${error}`);
     }
   };
 
@@ -237,13 +520,26 @@ const TableManagement = () => {
     }
   };
 
-  const showQRCode = (id: string) => {
-    const table = tables.find((t) => t.id === id);
-    if (table && table.qrCode) {
-      setSelectedTable(table);
-      setShowQRDialog(true);
+  const showQRCode = (tableId: string) => {
+    const table = tables.find((t) => t.id === tableId);
+    if (table && table.sessionActive) {
+      const sessionData = activeSessions[table.table_id];
+      if (sessionData) {
+        const updatedTable = {
+          ...table,
+          qrCode: sessionData.qrCode,
+          menuUrl: sessionData.menuUrl,
+        };
+        setSelectedTable(updatedTable);
+        setShowQRDialog(true);
+      }
     }
   };
+
+  // Load tables on component mount
+  useEffect(() => {
+    fetchTables();
+  }, []);
 
   const getStatusColor = (sessionActive: boolean) => {
     if (sessionActive) {
@@ -263,13 +559,42 @@ const TableManagement = () => {
         </div>
         <div className="flex items-center gap-2">
           {isEditMode ? (
-            <Button
-              onClick={() => setIsEditMode(false)}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              Save Layout
-            </Button>
+            <>
+              <Button
+                onClick={saveAllPositions}
+                disabled={isSaving || Object.keys(pendingUpdates).length === 0}
+                className="flex items-center gap-2"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    Save Layout
+                    {Object.keys(pendingUpdates).length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                        {Object.keys(pendingUpdates).length}
+                      </span>
+                    )}
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => {
+                  // Cancel edit mode and revert changes
+                  fetchTables();
+                  setPendingUpdates({});
+                  setIsEditMode(false);
+                }}
+                variant="outline"
+                disabled={isSaving}
+                className="flex items-center gap-2"
+              >
+                Cancel
+              </Button>
+            </>
           ) : (
             <Button
               onClick={() => setIsEditMode(true)}
@@ -279,7 +604,11 @@ const TableManagement = () => {
               Edit Layout
             </Button>
           )}
-          <Button onClick={addTable} className="flex items-center gap-2">
+          <Button
+            onClick={addTable}
+            className="flex items-center gap-2"
+            disabled={isEditMode}
+          >
             <Plus className="h-4 w-4" />
             Add Table
           </Button>
@@ -291,7 +620,9 @@ const TableManagement = () => {
         style={{ height: "550px", width: "100%" }}
       >
         <div className="absolute inset-2 text-xs text-gray-400 pointer-events-none">
-          Restaurant Floor Plan - Drag tables to arrange layout
+          {isEditMode
+            ? `Restaurant Floor Plan - Drag tables to arrange layout ${Object.keys(pendingUpdates).length > 0 ? `(${Object.keys(pendingUpdates).length} changes pending)` : ""}`
+            : "Restaurant Floor Plan - Click 'Edit Layout' to rearrange tables"}
         </div>
         {tables.map((table) => (
           <motion.div
@@ -302,6 +633,7 @@ const TableManagement = () => {
               const rect =
                 event.currentTarget.parentElement?.getBoundingClientRect();
               if (rect) {
+                // Calculate new position with bounds checking
                 const newX = Math.max(
                   0,
                   Math.min(rect.width - 80, table.x + info.offset.x),
@@ -309,6 +641,10 @@ const TableManagement = () => {
                 const newY = Math.max(
                   0,
                   Math.min(rect.height - 80, table.y + info.offset.y),
+                );
+
+                console.log(
+                  `📍 Table ${table.name} dragged from (${table.x}, ${table.y}) to (${newX}, ${newY})`,
                 );
                 updateTablePosition(table.id, newX, newY);
               }
@@ -387,7 +723,12 @@ const TableManagement = () => {
         ))}
       </div>
 
-      {tables.length === 0 && (
+      {loading ? (
+        <div className="text-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-500">Loading tables...</p>
+        </div>
+      ) : tables.length === 0 ? (
         <div className="text-center py-12">
           <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h4 className="text-lg font-medium text-gray-900 mb-2">
@@ -401,7 +742,7 @@ const TableManagement = () => {
             Add Your First Table
           </Button>
         </div>
-      )}
+      ) : null}
 
       {/* QR Code Dialog */}
       <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>

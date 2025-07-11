@@ -105,6 +105,18 @@ export interface Order {
   order_items?: OrderItem[];
 }
 
+export interface Table {
+  id: string;
+  table_id: string;
+  name: string;
+  seats: number;
+  status: "available" | "occupied" | "reserved";
+  x_position: number;
+  y_position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TableSession {
   id: string;
   table_id: string;
