@@ -56,10 +56,6 @@ const TableManagement = () => {
   const [activeSessions, setActiveSessions] = useState<
     Record<string, { qrCode: string; menuUrl: string }>
   >({});
-  const [pendingUpdates, setPendingUpdates] = useState<
-    Record<string, { x: number; y: number }>
-  >({});
-  const [isSaving, setIsSaving] = useState(false);
 
   // Fetch tables from database
   const fetchTables = async () => {
@@ -131,22 +127,15 @@ const TableManagement = () => {
           name: table.name,
           seats: table.seats,
           status: table.status,
-          x: Number(table.x_position) || 50, // Ensure it's a number, default to 50
-          y: Number(table.y_position) || 50, // Ensure it's a number, default to 50
+          x: table.canvas_x || 0, // Default to 0 if null
+          y: table.canvas_y || 0, // Default to 0 if null
           sessionActive: false, // Will be updated by checking active sessions
         })) || [];
 
       console.log(
-        "📍 Loaded table positions from database:",
+        "📍 Loaded table positions:",
         convertedTables.map((t) => `${t.name}: (${t.x}, ${t.y})`).join(", "),
       );
-
-      // Verify positions are being applied correctly
-      convertedTables.forEach((table) => {
-        console.log(
-          `✅ Table ${table.name} positioned at x:${table.x}, y:${table.y}`,
-        );
-      });
 
       setTables(convertedTables);
       console.log(
@@ -216,8 +205,8 @@ const TableManagement = () => {
         name: `Table ${nextTableNumber}`,
         seats: 4,
         status: "available" as const,
-        x_position: Math.random() * 400,
-        y_position: Math.random() * 300,
+        canvas_x: Math.random() * 400,
+        canvas_y: Math.random() * 300,
       };
 
       // Check if Supabase is configured
@@ -232,8 +221,8 @@ const TableManagement = () => {
           name: newTableData.name,
           seats: newTableData.seats,
           status: newTableData.status,
-          x: Number(newTableData.x_position) || 50,
-          y: Number(newTableData.y_position) || 50,
+          x: newTableData.x_position,
+          y: newTableData.y_position,
           sessionActive: false,
         };
         setTables([...tables, newTable]);
@@ -257,8 +246,8 @@ const TableManagement = () => {
         name: data.name,
         seats: data.seats,
         status: data.status,
-        x: Number(data.x_position) || 50,
-        y: Number(data.y_position) || 50,
+        x: data.x_position,
+        y: data.y_position,
         sessionActive: false,
       };
 
@@ -269,79 +258,40 @@ const TableManagement = () => {
     }
   };
 
-  const updateTablePosition = (id: string, x: number, y: number) => {
+  const updateTablePosition = async (id: string, x: number, y: number) => {
     // Update local state immediately for smooth UX
     setTables((prevTables) =>
       prevTables.map((table) => (table.id === id ? { ...table, x, y } : table)),
     );
 
-    // Track pending updates for batch save
-    setPendingUpdates((prev) => ({
-      ...prev,
-      [id]: { x, y },
-    }));
+    // Update database
+    if (
+      import.meta.env.VITE_SUPABASE_URL &&
+      import.meta.env.VITE_SUPABASE_ANON_KEY
+    ) {
+      try {
+        console.log(
+          `🔄 Updating table position in database: ID=${id}, x=${x}, y=${y}`,
+        );
+        const { error } = await supabase
+          .from("tables")
+          .update({ canvas_x: x, canvas_y: y })
+          .eq("id", id);
 
-    console.log(`📍 Table position updated locally: ID=${id}, x=${x}, y=${y}`);
-  };
-
-  const saveAllPositions = async () => {
-    if (Object.keys(pendingUpdates).length === 0) {
-      console.log("No position changes to save");
-      setIsEditMode(false);
-      return;
-    }
-
-    setIsSaving(true);
-    console.log(
-      `🔄 Saving ${Object.keys(pendingUpdates).length} table position updates to database`,
-    );
-
-    try {
-      // Check if Supabase is configured
-      if (
-        !import.meta.env.VITE_SUPABASE_URL ||
-        !import.meta.env.VITE_SUPABASE_ANON_KEY
-      ) {
-        console.log("📍 Mock mode: All table positions saved locally");
-        setPendingUpdates({});
-        setIsEditMode(false);
-        setIsSaving(false);
-        return;
+        if (error) {
+          console.error("❌ Error updating table position:", error);
+          // Revert local state on error
+          await fetchTables();
+        } else {
+          console.log(`✅ Table position updated successfully in database`);
+        }
+      } catch (error) {
+        console.error("❌ Error updating table position:", error);
+        // Revert local state on error
+        await fetchTables();
       }
-
-      // Update all tables in database
-      const updatePromises = Object.entries(pendingUpdates).map(
-        async ([tableId, position]) => {
-          const { error } = await supabase
-            .from("tables")
-            .update({ x_position: position.x, y_position: position.y })
-            .eq("id", tableId);
-
-          if (error) {
-            console.error(`❌ Error updating table ${tableId}:`, error);
-            throw error;
-          }
-
-          console.log(
-            `✅ Table ${tableId} position saved: (${position.x}, ${position.y})`,
-          );
-          return { tableId, success: true };
-        },
-      );
-
-      await Promise.all(updatePromises);
-
-      console.log("✅ All table positions saved successfully to database");
-      setPendingUpdates({});
-      setIsEditMode(false);
-    } catch (error) {
-      console.error("❌ Error saving table positions:", error);
-      // Revert to database state on error
-      await fetchTables();
-      setPendingUpdates({});
-      alert("Failed to save table positions. Changes have been reverted.");
-    } finally {
-      setIsSaving(false);
+    } else {
+      console.log(`📍 Mock mode: Table ${id} moved to position (${x}, ${y})`);
     }
   };
 
@@ -559,56 +509,41 @@ const TableManagement = () => {
         </div>
         <div className="flex items-center gap-2">
           {isEditMode ? (
-            <>
-              <Button
-                onClick={saveAllPositions}
-                disabled={isSaving || Object.keys(pendingUpdates).length === 0}
-                className="flex items-center gap-2"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    Save Layout
-                    {Object.keys(pendingUpdates).length > 0 && (
-                      <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
-                        {Object.keys(pendingUpdates).length}
-                      </span>
-                    )}
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={() => {
-                  // Cancel edit mode and revert changes
-                  fetchTables();
-                  setPendingUpdates({});
-                  setIsEditMode(false);
-                }}
-                variant="outline"
-                disabled={isSaving}
-                className="flex items-center gap-2"
-              >
-                Cancel
-              </Button>
-            </>
-          ) : (
             <Button
-              onClick={() => setIsEditMode(true)}
+              onClick={() => setIsEditMode(false)}
               variant="outline"
               className="flex items-center gap-2"
             >
-              Edit Layout
+              Save Layout
+            </Button>
+          ) : (
+            // <Button
+            //   onClick={() => setIsEditMode(true)}
+            //   variant="outline"
+            //   className="flex items-center gap-2"
+            // >
+            //   Edit Layout
+            // </Button>
+            <Button
+              onClick={async () => {
+                if (isEditMode) {
+                  // Save layout
+                  for (const table of tables) {
+                    await supabase
+                      .from("tables")
+                      .update({ canvas_x: table.x, canvas_y: table.y })
+                      .eq("id", table.id);
+                  }
+                }
+                setIsEditMode(!isEditMode);
+              }}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              {isEditMode ? "Save Layout" : "Edit Layout"}
             </Button>
           )}
-          <Button
-            onClick={addTable}
-            className="flex items-center gap-2"
-            disabled={isEditMode}
-          >
+          <Button onClick={addTable} className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
             Add Table
           </Button>
@@ -620,9 +555,7 @@ const TableManagement = () => {
         style={{ height: "550px", width: "100%" }}
       >
         <div className="absolute inset-2 text-xs text-gray-400 pointer-events-none">
-          {isEditMode
-            ? `Restaurant Floor Plan - Drag tables to arrange layout ${Object.keys(pendingUpdates).length > 0 ? `(${Object.keys(pendingUpdates).length} changes pending)` : ""}`
-            : "Restaurant Floor Plan - Click 'Edit Layout' to rearrange tables"}
+          Restaurant Floor Plan - Drag tables to arrange layout
         </div>
         {tables.map((table) => (
           <motion.div
