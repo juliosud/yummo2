@@ -97,9 +97,15 @@ export interface CartItem {
 export interface Order {
   id: string;
   table_number: string;
+  session_code?: string; //------------------------------------------------NOTE
   status: "pending" | "preparing" | "ready" | "completed";
   total: number;
   estimated_minutes?: number;
+
+  customer_name?: string;
+  customer_phone?: string;
+  notes?: string;
+
   created_at: string;
   updated_at: string;
   order_items?: OrderItem[];

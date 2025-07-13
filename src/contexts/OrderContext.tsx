@@ -26,6 +26,7 @@ interface Order {
   status: "pending" | "preparing" | "ready" | "completed";
   orderTime: Date;
   tableNumber: string;
+  sessionCode?: string; // Track which session this order belongs to
   estimatedMinutes?: number;
 }
 
@@ -80,6 +81,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
       status: dbOrder.status,
       orderTime: new Date(dbOrder.created_at),
       tableNumber: dbOrder.table_number,
+      sessionCode: dbOrder.session_code,
       estimatedMinutes: dbOrder.estimated_minutes,
     };
   };
@@ -90,13 +92,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
     return urlParams.get("table") || "1";
   };
 
-  // Fetch orders from database (filtered by current table)
+  // Get current session code from URL
+  const getCurrentSessionCode = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("session");
+  };
+
+  // Fetch orders from database (filtered by current table and session)
   const fetchOrders = async () => {
     try {
       setLoading(true);
 
-      // Get current table number
+      // Get current table number and session code
       const tableNumber = getCurrentTableNumber();
+      const sessionCode = getCurrentSessionCode();
       setCurrentTableNumber(tableNumber);
 
       // Check if Supabase is properly configured
@@ -136,6 +145,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
             status: "preparing",
             orderTime: new Date(),
             tableNumber: tableNumber,
+            sessionCode: sessionCode,
             estimatedMinutes: 25,
           },
         ];
@@ -145,9 +155,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       console.log(
-        `📦 OrderContext: Fetching orders for table ${tableNumber} from Supabase database...`,
+        `📦 OrderContext: Fetching orders for table ${tableNumber} and session ${sessionCode} from Supabase database...`,
       );
-      const { data, error } = await supabase
+
+      // Build query to filter by table number and session code
+      let query = supabase
         .from("orders")
         .select(
           `
@@ -166,8 +178,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
           )
         `,
         )
-        .eq("table_number", tableNumber)
-        .order("created_at", { ascending: false });
+        .eq("table_number", tableNumber);
+
+      // Add session code filter if available
+      if (sessionCode) {
+        query = query.eq("session_code", sessionCode);
+      }
+
+      const { data, error } = await query.order("created_at", {
+        ascending: false,
+      });
 
       if (error) {
         console.error("Error fetching orders:", error);
@@ -177,7 +197,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       console.log(
-        `✅ OrderContext: Successfully fetched ${data?.length || 0} orders for table ${tableNumber} from database`,
+        `✅ OrderContext: Successfully fetched ${data?.length || 0} orders for table ${tableNumber} and session ${sessionCode} from database`,
       );
       const convertedOrders = data?.map(convertDBOrderToOrder) || [];
       setOrders(convertedOrders);
@@ -209,6 +229,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
           status: "pending",
           orderTime: new Date(),
           tableNumber: orderData.tableNumber,
+          sessionCode: orderData.sessionCode || getCurrentSessionCode(),
           estimatedMinutes: Math.floor(Math.random() * 20) + 10,
         };
         setOrders((prev) => [newOrder, ...prev]);
@@ -257,6 +278,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({
         .from("orders")
         .insert({
           table_number: orderData.tableNumber,
+          session_code: orderData.sessionCode || getCurrentSessionCode(),
           total: orderData.total,
           status: "pending",
           estimated_minutes: Math.floor(Math.random() * 20) + 10,
