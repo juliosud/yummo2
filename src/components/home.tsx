@@ -49,7 +49,7 @@
 // const TableManagement = () => {
 //   const [tables, setTables] = useState<Table[]>([]);
 //   const [loading, setLoading] = useState(true);
-//   const [isEditMode, setIsEditMode] = useState(false);
+//
 //   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
 //   const [showQRDialog, setShowQRDialog] = useState(false);
 //   const [copied, setCopied] = useState(false);
@@ -1173,6 +1173,7 @@ interface Table {
   name: string;
   seats: number;
   status: "available" | "occupied" | "reserved";
+  table_type: "regular" | "terminal";
   x: number;
   y: number;
   sessionActive: boolean;
@@ -1204,39 +1205,52 @@ const TableManagement = () => {
         console.log(
           "🏪 TableManagement: Using mock tables (database not connected)",
         );
-        // Use mock data when Supabase is not configured
-        const mockTables: Table[] = [
+        // Use mock data when Supabase is not configured with automatic positioning
+        const mockTablesData = [
           {
             id: "1",
             table_id: "1",
             name: "Table 1",
             seats: 4,
-            status: "available",
-            x: 50,
-            y: 50,
-            sessionActive: false,
+            status: "available" as const,
+            table_type: "regular" as const,
           },
           {
             id: "2",
             table_id: "2",
             name: "Table 2",
             seats: 2,
-            status: "available",
-            x: 200,
-            y: 50,
-            sessionActive: false,
+            status: "available" as const,
+            table_type: "regular" as const,
           },
           {
             id: "3",
             table_id: "3",
             name: "Table 3",
             seats: 6,
-            status: "available",
-            x: 350,
-            y: 50,
-            sessionActive: false,
+            status: "available" as const,
+            table_type: "regular" as const,
           },
         ];
+
+        const mockTables: Table[] = mockTablesData.map((table, index) => {
+          const tablesPerRow = 4;
+          const spacing = 120;
+          const padding = 40;
+
+          const row = Math.floor(index / tablesPerRow);
+          const col = index % tablesPerRow;
+
+          const x = padding + col * spacing;
+          const y = padding + row * spacing;
+
+          return {
+            ...table,
+            x,
+            y,
+            sessionActive: false,
+          };
+        });
         setTables(mockTables);
         setLoading(false);
         return;
@@ -1253,21 +1267,20 @@ const TableManagement = () => {
         return;
       }
 
-      // Convert database format to component format with bounds validation
+      // Convert database format to component format with automatic positioning
       const convertedTables: Table[] =
-        data?.map((table) => {
-          // Ensure table positions are within valid bounds with padding
+        data?.map((table, index) => {
+          // Calculate position based on index (grid layout)
+          const tablesPerRow = 4;
           const tableSize = 80;
-          const padding = 20; // Same padding as drag bounds
-          const maxX = 800 - tableSize - padding; // Approximate max width - table size - padding
-          const maxY = 550 - tableSize - padding; // Canvas height - table size - padding
+          const spacing = 120; // Space between tables
+          const padding = 40; // Padding from edges
 
-          let x = table.canvas_x || 0;
-          let y = table.canvas_y || 0;
+          const row = Math.floor(index / tablesPerRow);
+          const col = index % tablesPerRow;
 
-          // Clamp positions to valid bounds with padding
-          x = Math.max(padding, Math.min(maxX, x));
-          y = Math.max(padding, Math.min(maxY, y));
+          const x = padding + col * spacing;
+          const y = padding + row * spacing;
 
           return {
             id: table.id,
@@ -1275,6 +1288,7 @@ const TableManagement = () => {
             name: table.name,
             seats: table.seats,
             status: table.status,
+            table_type: table.table_type || "regular",
             x: x,
             y: y,
             sessionActive: false, // Will be updated by checking active sessions
@@ -1346,16 +1360,33 @@ const TableManagement = () => {
     }
   };
 
-  const addTable = async () => {
+  const addTable = async (tableType: "regular" | "terminal" = "regular") => {
     try {
       const nextTableNumber = (tables.length + 1).toString();
+
+      // Calculate position for new table based on current table count
+      const tablesPerRow = 4;
+      const spacing = 120;
+      const padding = 40;
+      const index = tables.length;
+
+      const row = Math.floor(index / tablesPerRow);
+      const col = index % tablesPerRow;
+
+      const x = padding + col * spacing;
+      const y = padding + row * spacing;
+
       const newTableData = {
         table_id: nextTableNumber,
-        name: `Table ${nextTableNumber}`,
-        seats: 4,
+        name:
+          tableType === "terminal"
+            ? `Terminal ${nextTableNumber}`
+            : `Table ${nextTableNumber}`,
+        seats: tableType === "terminal" ? 1 : 4,
         status: "available" as const,
-        canvas_x: Math.random() * 400,
-        canvas_y: Math.random() * 300,
+        table_type: tableType,
+        canvas_x: x,
+        canvas_y: y,
       };
 
       // Check if Supabase is configured
@@ -1370,8 +1401,9 @@ const TableManagement = () => {
           name: newTableData.name,
           seats: newTableData.seats,
           status: newTableData.status,
-          x: newTableData.canvas_x,
-          y: newTableData.canvas_y,
+          table_type: newTableData.table_type,
+          x: x,
+          y: y,
           sessionActive: false,
         };
         setTables([...tables, newTable]);
@@ -1395,6 +1427,7 @@ const TableManagement = () => {
         name: data.name,
         seats: data.seats,
         status: data.status,
+        table_type: data.table_type || "regular",
         x: data.canvas_x,
         y: data.canvas_y,
         sessionActive: false,
@@ -1404,43 +1437,6 @@ const TableManagement = () => {
       console.log("✅ Table added successfully:", newTable.name);
     } catch (error) {
       console.error("Error adding table:", error);
-    }
-  };
-
-  const updateTablePosition = async (id: string, x: number, y: number) => {
-    // Update local state immediately for smooth UX
-    setTables((prevTables) =>
-      prevTables.map((table) => (table.id === id ? { ...table, x, y } : table)),
-    );
-
-    // Update database
-    if (
-      import.meta.env.VITE_SUPABASE_URL &&
-      import.meta.env.VITE_SUPABASE_ANON_KEY
-    ) {
-      try {
-        console.log(
-          `🔄 Updating table position in database: ID=${id}, x=${x}, y=${y}`,
-        );
-        const { error } = await supabase
-          .from("tables")
-          .update({ canvas_x: x, canvas_y: y })
-          .eq("id", id);
-
-        if (error) {
-          console.error("❌ Error updating table position:", error);
-          // Revert local state on error
-          await fetchTables();
-        } else {
-          console.log(`✅ Table position updated successfully in database`);
-        }
-      } catch (error) {
-        console.error("❌ Error updating table position:", error);
-        // Revert local state on error
-        await fetchTables();
-      }
-    } else {
-      console.log(`📍 Mock mode: Table ${id} moved to position (${x}, ${y})`);
     }
   };
 
@@ -1475,10 +1471,47 @@ const TableManagement = () => {
     if (!table) return;
 
     try {
-      // Generate unique session code using table_id instead of id
-      const sessionCode = `${table.table_id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      // For terminals, check if there's already an active session and prevent starting a new one
+      // This is different from regular tables which can start/stop sessions normally
+      if (table.table_type === "terminal" && table.sessionActive) {
+        console.log(
+          "⚠️ Terminal already has an active session, cannot start new one",
+        );
+        // Just show the existing QR code
+        const sessionData = activeSessions[table.table_id];
+        if (sessionData) {
+          const updatedTable = {
+            ...table,
+            qrCode: sessionData.qrCode,
+            menuUrl: sessionData.menuUrl,
+          };
+          setSelectedTable(updatedTable);
+          setShowQRDialog(true);
+        }
+        return;
+      }
+
+      // Generate unique session code - for terminals, always create a new unique session
+      const sessionCode =
+        table.table_type === "terminal"
+          ? `terminal-${table.table_id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+          : `${table.table_id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+
+      // Generate the menu URL with proper base path handling
       const baseUrl = window.location.origin;
-      const menuUrl = `${baseUrl}/menu?table=${table.table_id}&session=${sessionCode}`;
+      const basePath = import.meta.env.VITE_BASE_PATH || "";
+      const menuPath = basePath ? `${basePath}/menu` : "/menu";
+      const menuUrl = `${baseUrl}${menuPath}?table=${table.table_id}&session=${sessionCode}`;
+
+      console.log("🔗 Generated session URL:", menuUrl);
+      console.log("🔗 Base URL:", baseUrl);
+      console.log("🔗 Base Path:", basePath);
+      console.log("🔗 Menu Path:", menuPath);
+      console.log("🔗 Current location:", window.location.href);
+      console.log(
+        "🔗 Environment:",
+        import.meta.env.DEV ? "development" : "production",
+      );
 
       // Generate QR code
       const qrCodeDataUrl = await QRCode.toDataURL(menuUrl, {
@@ -1562,27 +1595,59 @@ const TableManagement = () => {
         import.meta.env.VITE_SUPABASE_ANON_KEY
       ) {
         console.log("🔄 Ending session for table:", table.table_id);
-        const { data, error } = await supabase
-          .from("table_sessions")
-          .update({
-            is_active: false,
-            ended_at: new Date().toISOString(),
-          })
-          .eq("table_id", table.table_id) // Use table_id instead of id
-          .eq("is_active", true)
-          .select();
 
-        if (error) {
-          console.error("❌ Failed to end session in database:", error);
-          alert(`Failed to end session: ${error.message}`);
-          return;
+        // For terminals, we want to end ALL sessions (active and inactive) to prevent new ones
+        // For regular tables, we only end active sessions
+        if (table.table_type === "terminal") {
+          // End all sessions for this terminal and mark it as permanently ended
+          const { data, error } = await supabase
+            .from("table_sessions")
+            .update({
+              is_active: false,
+              ended_at: new Date().toISOString(),
+            })
+            .eq("table_id", table.table_id)
+            .select();
+
+          if (error) {
+            console.error(
+              "❌ Failed to end terminal sessions in database:",
+              error,
+            );
+            alert(`Failed to end terminal session: ${error.message}`);
+            return;
+          } else {
+            console.log(
+              "✅ All terminal sessions ended in database for table:",
+              table.table_id,
+              "Updated records:",
+              data?.length || 0,
+            );
+          }
         } else {
-          console.log(
-            "✅ Session ended in database for table:",
-            table.table_id,
-            "Updated records:",
-            data?.length || 0,
-          );
+          // Regular table behavior - only end active sessions
+          const { data, error } = await supabase
+            .from("table_sessions")
+            .update({
+              is_active: false,
+              ended_at: new Date().toISOString(),
+            })
+            .eq("table_id", table.table_id)
+            .eq("is_active", true)
+            .select();
+
+          if (error) {
+            console.error("❌ Failed to end session in database:", error);
+            alert(`Failed to end session: ${error.message}`);
+            return;
+          } else {
+            console.log(
+              "✅ Session ended in database for table:",
+              table.table_id,
+              "Updated records:",
+              data?.length || 0,
+            );
+          }
         }
       }
 
@@ -1640,9 +1705,15 @@ const TableManagement = () => {
     fetchTables();
   }, []);
 
-  const getStatusColor = (sessionActive: boolean) => {
+  const getStatusColor = (
+    sessionActive: boolean,
+    tableType: "regular" | "terminal",
+  ) => {
     if (sessionActive) {
       return "bg-blue-50 border-blue-400 text-blue-700 border-2";
+    }
+    if (tableType === "terminal") {
+      return "bg-purple-50 border-purple-200 text-purple-700";
     }
     return "bg-gray-50 border-gray-200 text-gray-700";
   };
@@ -1651,229 +1722,51 @@ const TableManagement = () => {
     <div className="bg-white">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-xl font-semibold">Table Management</h3>
+          <h3 className="text-2xl font-bold">Table Management</h3>
           <p className="text-sm text-muted-foreground mt-1">
             Manage your restaurant tables and their availability
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isEditMode ? (
-            <>
-              <Button
-                onClick={async () => {
-                  try {
-                    console.log("💾 Saving table layout to database...");
-                    console.log(
-                      "💾 Current tables state:",
-                      tables.map((t) => `${t.name}: (${t.x}, ${t.y})`),
-                    );
-
-                    // Save all table positions to database
-                    if (
-                      import.meta.env.VITE_SUPABASE_URL &&
-                      import.meta.env.VITE_SUPABASE_ANON_KEY
-                    ) {
-                      const updatePromises = tables.map((table) => {
-                        console.log(
-                          `💾 Updating table ${table.name} (ID: ${table.id}) to position (${table.x}, ${table.y})`,
-                        );
-                        return supabase
-                          .from("tables")
-                          .update({
-                            canvas_x: table.x,
-                            canvas_y: table.y,
-                            updated_at: new Date().toISOString(),
-                          })
-                          .eq("id", table.id);
-                      });
-
-                      const results = await Promise.all(updatePromises);
-                      const errors = results.filter((result) => result.error);
-
-                      if (errors.length > 0) {
-                        console.error(
-                          "❌ Some table positions failed to save:",
-                          errors,
-                        );
-                        alert(
-                          "Some table positions failed to save. Please try again.",
-                        );
-                        return;
-                      }
-
-                      console.log("✅ All table positions saved successfully!");
-                    } else {
-                      console.log("📍 Mock mode: Table layout saved");
-                    }
-
-                    setIsEditMode(false);
-                  } catch (error) {
-                    console.error("❌ Error saving table layout:", error);
-                    alert("Failed to save table layout. Please try again.");
-                  }
-                }}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
-              >
-                <Check className="h-4 w-4" />
-                Save Layout
-              </Button>
-              <Button
-                onClick={() => {
-                  // Cancel edit mode and reload original positions
-                  fetchTables();
-                  setIsEditMode(false);
-                }}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button
-              onClick={() => setIsEditMode(true)}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <Settings className="h-4 w-4" />
-              Edit Layout
-            </Button>
-          )}
-          <Button onClick={addTable} className="flex items-center gap-2">
+          <Button
+            onClick={() => addTable("regular")}
+            className="flex items-center gap-2"
+          >
             <Plus className="h-4 w-4" />
             Add Table
+          </Button>
+          <Button
+            onClick={() => addTable("terminal")}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <QrCode className="h-4 w-4" />
+            Add Terminal
           </Button>
         </div>
       </div>
 
       <div
         data-canvas="table-layout"
-        className={cn(
-          "relative bg-gray-50 border-2 border-dashed rounded-lg transition-all",
-          isEditMode ? "border-blue-400 bg-blue-50" : "border-gray-300",
-        )}
+        className="relative bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg"
         style={{ height: "550px", width: "100%" }}
       >
-        <div
-          className={cn(
-            "absolute inset-2 text-xs pointer-events-none transition-colors",
-            isEditMode ? "text-blue-600" : "text-gray-400",
-          )}
-        >
-          {isEditMode
-            ? "Edit Mode - Drag tables to rearrange, then click Save Layout"
-            : "Restaurant Floor Plan - Click Edit Layout to rearrange tables"}
+        <div className="absolute inset-2 text-xs text-gray-400 pointer-events-none">
+          Restaurant Floor Plan - Tables are automatically arranged
         </div>
         {tables.map((table) => (
-          <motion.div
+          <div
             key={table.id}
-            drag={isEditMode}
-            dragMomentum={false}
-            dragConstraints={false}
-            dragElastic={0.1}
-            onDragEnd={(event, info) => {
-              if (!isEditMode) return;
-
-              // Use a more reliable way to get canvas bounds
-              const canvasElement = document.querySelector(
-                '[data-canvas="table-layout"]',
-              );
-              if (!canvasElement) {
-                console.error("❌ Could not find canvas element");
-                return;
-              }
-
-              const rect = canvasElement.getBoundingClientRect();
-
-              // Calculate new position with padding and smart repositioning
-              // Table size is 80x80 (w-20 h-20 = 80px)
-              const tableSize = 80;
-              const padding = 20; // Padding from canvas borders
-
-              // Calculate the desired position
-              const desiredX = table.x + info.offset.x;
-              const desiredY = table.y + info.offset.y;
-
-              // Define bounds with padding
-              const minX = padding;
-              const maxX = rect.width - tableSize - padding;
-              const minY = padding;
-              const maxY = rect.height - tableSize - padding;
-
-              // Smart repositioning: find the best position closest to desired
-              let newX, newY;
-
-              if (desiredX < minX) {
-                // Too far left - snap to left padding
-                newX = minX;
-              } else if (desiredX > maxX) {
-                // Too far right - snap to right padding
-                newX = maxX;
-              } else {
-                // Within bounds - use desired position
-                newX = desiredX;
-              }
-
-              if (desiredY < minY) {
-                // Too far up - snap to top padding
-                newY = minY;
-              } else if (desiredY > maxY) {
-                // Too far down - snap to bottom padding
-                newY = maxY;
-              } else {
-                // Within bounds - use desired position
-                newY = desiredY;
-              }
-
-              console.log(
-                `📍 Table ${table.name} dragged from (${table.x}, ${table.y}) to (${newX}, ${newY})`,
-              );
-              console.log(
-                `📍 Drag info: offset.x=${info.offset.x}, offset.y=${info.offset.y}`,
-              );
-              console.log(
-                `📍 Canvas rect: width=${rect.width}, height=${rect.height}`,
-              );
-              console.log(`📍 Desired position: (${desiredX}, ${desiredY})`);
-              console.log(
-                `📍 Padded bounds: X(${minX} to ${maxX}), Y(${minY} to ${maxY})`,
-              );
-
-              // Log repositioning info if table was repositioned
-              if (desiredX !== newX || desiredY !== newY) {
-                console.log(
-                  `📍 Table repositioned: desired (${desiredX}, ${desiredY}) → actual (${newX}, ${newY})`,
-                );
-              }
-
-              // Only update local state in edit mode, don't save to database yet
-              setTables((prevTables) => {
-                const updatedTables = prevTables.map((t) =>
-                  t.id === table.id ? { ...t, x: newX, y: newY } : t,
-                );
-                console.log(
-                  `📍 Updated tables state:`,
-                  updatedTables.map((t) => `${t.name}: (${t.x}, ${t.y})`),
-                );
-                return updatedTables;
-              });
-            }}
-            className={cn(
-              "absolute select-none",
-              isEditMode ? "cursor-move" : "cursor-default",
-            )}
+            className="absolute select-none cursor-default"
             style={{
               left: table.x,
               top: table.y,
             }}
-            whileHover={{ scale: 1.05 }}
-            whileDrag={{ scale: 1.1, zIndex: 10 }}
           >
             <div
               className={cn(
-                "relative w-20 h-20 border-2 rounded-xl flex flex-col items-center justify-center transition-all shadow-md",
-                getStatusColor(table.sessionActive),
-                isEditMode && "ring-2 ring-blue-400 ring-opacity-50",
+                "relative w-20 h-20 border-2 rounded-xl flex flex-col items-center justify-center transition-all shadow-md hover:scale-105",
+                getStatusColor(table.sessionActive, table.table_type),
               )}
             >
               <button
@@ -1883,9 +1776,13 @@ const TableManagement = () => {
                 <Trash2 className="h-3 w-3 text-white" />
               </button>
 
-              {/* Table representation */}
+              {/* Table/Terminal representation */}
               <div className="w-12 h-6 bg-white/50 rounded-md border border-current mb-1 flex items-center justify-center">
-                <div className="text-xs font-bold">{table.seats}</div>
+                {table.table_type === "terminal" ? (
+                  <QrCode className="h-3 w-3" />
+                ) : (
+                  <div className="text-xs font-bold">{table.seats}</div>
+                )}
               </div>
 
               <div className="text-center mb-1">
@@ -1929,7 +1826,7 @@ const TableManagement = () => {
                 )}
               </div>
             </div>
-          </motion.div>
+          </div>
         ))}
       </div>
 
@@ -1947,10 +1844,16 @@ const TableManagement = () => {
           <p className="text-gray-500 mb-4">
             Add your first table to get started with table management.
           </p>
-          <Button onClick={addTable}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Your First Table
-          </Button>
+          <div className="flex gap-2 justify-center">
+            <Button onClick={() => addTable("regular")}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Your First Table
+            </Button>
+            <Button onClick={() => addTable("terminal")} variant="outline">
+              <QrCode className="h-4 w-4 mr-2" />
+              Add Terminal
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -2109,8 +2012,32 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Left Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      {/* Mobile Navigation - Bottom Tabs */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 pb-safe-bottom">
+        <div className="flex items-center justify-around px-2 py-2">
+          {navigationItems.slice(0, 5).map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={cn(
+                  "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all",
+                  activeTab === item.id
+                    ? "bg-yellow-100 text-yellow-800"
+                    : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-xs font-medium">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:flex w-64 bg-white border-r border-gray-200 flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-center">
@@ -2186,23 +2113,50 @@ const Home = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
+        {/* Mobile Header */}
+        <header className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 pt-safe-top">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                <User className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold capitalize">{activeTab}</h1>
+                <p className="text-xs text-gray-500">
+                  {profile?.restaurant_name || "Restaurant"}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="text-gray-600 hover:text-red-600"
+            >
+              {isLoggingOut ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </header>
+
+        {/* Desktop Header */}
         <header
-          className="bg-white border-b border-gray-200 px-6"
+          className="hidden lg:block bg-white border-b border-gray-200 px-6"
           style={{ height: "77px" }}
         >
           <div className="flex items-center justify-between h-full">
             <div>
               <h1 className="text-2xl font-bold capitalize">{activeTab}</h1>
-              <p className="text-sm text-muted-foreground">
-                Wednesday, 12 July 2023
-              </p>
             </div>
           </div>
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 p-6 bg-gray-50">
+        <main className="flex-1 p-3 lg:p-6 bg-gray-50 pb-20 lg:pb-6">
           {activeTab === "orders" && <OrdersDashboard />}
 
           {activeTab === "menu" && (
@@ -2212,171 +2166,257 @@ const Home = () => {
           )}
 
           {activeTab === "dashboard" && (
-            <div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Total Orders Today
-                      </p>
-                      <p className="text-2xl font-bold">24</p>
+            <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-6 lg:h-full">
+              {/* Mobile Stats Grid */}
+              <div className="lg:hidden">
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="bg-white p-3 rounded-2xl border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Orders Today
+                        </p>
+                        <p className="text-lg font-bold">24</p>
+                      </div>
+                      <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <ClipboardList className="h-4 w-4 text-blue-600" />
+                      </div>
                     </div>
-                    <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-                      <ClipboardList className="h-4 w-4 text-blue-600" />
-                    </div>
+                    <p className="text-xs text-green-600 mt-1 font-medium">
+                      +12%
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    +12% from yesterday
-                  </p>
-                </div>
 
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Revenue Today
-                      </p>
-                      <p className="text-2xl font-bold">$1,247</p>
+                  <div className="bg-white p-3 rounded-2xl border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Revenue
+                        </p>
+                        <p className="text-lg font-bold">$1,247</p>
+                      </div>
+                      <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
+                        <BarChart3 className="h-4 w-4 text-green-600" />
+                      </div>
                     </div>
-                    <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
-                      <BarChart3 className="h-4 w-4 text-green-600" />
-                    </div>
+                    <p className="text-xs text-green-600 mt-1 font-medium">
+                      +8%
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    +8% from yesterday
-                  </p>
-                </div>
 
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Active Orders
-                      </p>
-                      <p className="text-2xl font-bold">7</p>
+                  <div className="bg-white p-3 rounded-2xl border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Active Orders
+                        </p>
+                        <p className="text-lg font-bold">7</p>
+                      </div>
+                      <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
+                        <ChefHat className="h-4 w-4 text-orange-600" />
+                      </div>
                     </div>
-                    <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
-                      <ChefHat className="h-4 w-4 text-orange-600" />
-                    </div>
+                    <p className="text-xs text-orange-600 mt-1 font-medium">
+                      3 ready, 4 prep
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    3 ready, 4 in progress
-                  </p>
-                </div>
 
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Avg. Prep Time
-                      </p>
-                      <p className="text-2xl font-bold">18m</p>
+                  <div className="bg-white p-3 rounded-2xl border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Avg. Prep Time
+                        </p>
+                        <p className="text-lg font-bold">18m</p>
+                      </div>
+                      <div className="h-8 w-8 bg-purple-100 rounded-full flex items-center justify-center">
+                        <Search className="h-4 w-4 text-purple-600" />
+                      </div>
                     </div>
-                    <div className="h-8 w-8 bg-purple-100 rounded-full flex items-center justify-center">
-                      <Search className="h-4 w-4 text-purple-600" />
-                    </div>
+                    <p className="text-xs text-green-600 mt-1 font-medium">
+                      -2m
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    -2m from yesterday
-                  </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <h4 className="text-lg font-semibold mb-4">
+              {/* Main AI Chat Feature */}
+              <div className="lg:col-span-2 h-full">
+                <div className="h-full min-h-[500px] lg:min-h-[700px]">
+                  <AIInsightsChat />
+                </div>
+              </div>
+
+              {/* Desktop Side Panel with Stats and Activity */}
+              <div className="hidden lg:block space-y-6">
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-4 rounded-lg border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Orders Today
+                        </p>
+                        <p className="text-xl font-bold">24</p>
+                      </div>
+                      <div className="h-6 w-6 bg-blue-100 rounded-full flex items-center justify-center">
+                        <ClipboardList className="h-3 w-3 text-blue-600" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      +12% from yesterday
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-lg border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Revenue
+                        </p>
+                        <p className="text-xl font-bold">$1,247</p>
+                      </div>
+                      <div className="h-6 w-6 bg-green-100 rounded-full flex items-center justify-center">
+                        <BarChart3 className="h-3 w-3 text-green-600" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      +8% from yesterday
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-lg border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Active Orders
+                        </p>
+                        <p className="text-xl font-bold">7</p>
+                      </div>
+                      <div className="h-6 w-6 bg-orange-100 rounded-full flex items-center justify-center">
+                        <ChefHat className="h-3 w-3 text-orange-600" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      3 ready, 4 in progress
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-lg border shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Avg. Prep Time
+                        </p>
+                        <p className="text-xl font-bold">18m</p>
+                      </div>
+                      <div className="h-6 w-6 bg-purple-100 rounded-full flex items-center justify-center">
+                        <Search className="h-3 w-3 text-purple-600" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      -2m from yesterday
+                    </p>
+                  </div>
+                </div>
+
+                {/* Recent Activity */}
+                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                  <h4 className="text-sm font-semibold mb-3">
                     Recent Activity
                   </h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between py-2 border-b">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between py-1 border-b border-gray-100">
                       <div>
-                        <p className="font-medium">Order #325 completed</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs font-medium">
+                          Order #325 completed
+                        </p>
+                        <p className="text-xs text-muted-foreground">
                           Table A4 - Ariel Hikmat
                         </p>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        2 min ago
+                        2m ago
                       </span>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b">
+                    <div className="flex items-center justify-between py-1 border-b border-gray-100">
                       <div>
-                        <p className="font-medium">New order received</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs font-medium">
+                          New order received
+                        </p>
+                        <p className="text-xs text-muted-foreground">
                           Table B2 - Denis Freeman
                         </p>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        5 min ago
+                        5m ago
                       </span>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b">
+                    <div className="flex items-center justify-between py-1">
                       <div>
-                        <p className="font-medium">Menu item updated</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs font-medium">Menu item updated</p>
+                        <p className="text-xs text-muted-foreground">
                           Chocolate Cake - Price changed
                         </p>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        12 min ago
+                        12m ago
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <h4 className="text-lg font-semibold mb-4">
+                {/* Popular Items */}
+                <div className="bg-white p-4 rounded-lg border shadow-sm">
+                  <h4 className="text-sm font-semibold mb-3">
                     Popular Items Today
                   </h4>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-xs">
                           1
                         </div>
                         <div>
-                          <p className="font-medium">Belgian Waffles</p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs font-medium">Belgian Waffles</p>
+                          <p className="text-xs text-muted-foreground">
                             8 orders
                           </p>
                         </div>
                       </div>
-                      <span className="text-sm font-medium">$103.92</span>
+                      <span className="text-xs font-medium">$103.92</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-medium text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-medium text-xs">
                           2
                         </div>
                         <div>
-                          <p className="font-medium">Meat & Mushrooms</p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs font-medium">
+                            Meat & Mushrooms
+                          </p>
+                          <p className="text-xs text-muted-foreground">
                             6 orders
                           </p>
                         </div>
                       </div>
-                      <span className="text-sm font-medium">$222.00</span>
+                      <span className="text-xs font-medium">$222.00</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-medium text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-medium text-xs">
                           3
                         </div>
                         <div>
-                          <p className="font-medium">Shrimp Salad</p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs font-medium">Shrimp Salad</p>
+                          <p className="text-xs text-muted-foreground">
                             5 orders
                           </p>
                         </div>
                       </div>
-                      <span className="text-sm font-medium">$112.50</span>
+                      <span className="text-xs font-medium">$112.50</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="h-96">
-                  <AIInsightsChat />
                 </div>
               </div>
             </div>

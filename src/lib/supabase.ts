@@ -56,6 +56,47 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : createMockClient();
 
+// Raw SQL query execution function
+export const executeRawQuery = async (query: string) => {
+  if (!isSupabaseConfigured) {
+    console.warn("⚠️ Database not configured - cannot execute raw queries");
+    return { data: null, error: { message: "Database not configured" } };
+  }
+
+  try {
+    console.log("🔍 Executing SQL query:", query.substring(0, 100) + "...");
+
+    // Call the execute_sql function we created in Supabase
+    const { data, error } = await supabase.rpc("execute_sql", { query });
+
+    if (error) {
+      console.error("❌ SQL query error:", error);
+      return { data: null, error };
+    }
+
+    // The execute_sql function returns JSONB objects, so we need to extract the actual data
+    let processedData = data;
+    if (data && Array.isArray(data) && data.length > 0) {
+      // If the data contains 'result' property, extract it
+      if (data[0].result) {
+        processedData = data.map((item) => item.result);
+      }
+    }
+
+    console.log(
+      "✅ SQL query successful, rows returned:",
+      processedData?.length || 0,
+    );
+    return { data: processedData, error: null };
+  } catch (error) {
+    console.error("❌ SQL query execution failed:", error);
+    return {
+      data: null,
+      error: { message: error.message || "Query execution failed" },
+    };
+  }
+};
+
 // Database types
 export interface MenuItem {
   id: string;
@@ -117,6 +158,7 @@ export interface Table {
   name: string;
   seats: number;
   status: "available" | "occupied" | "reserved";
+  table_type: "regular" | "terminal";
   x_position: number;
   y_position: number;
   created_at: string;

@@ -597,26 +597,26 @@ const CustomerMenuContent = () => {
   return (
     <div className="bg-white min-h-screen w-full overflow-x-hidden">
       {/* Header */}
-      <div className="bg-white sticky top-0 z-40 px-6 py-6">
+      <div className="bg-white sticky top-0 z-40 px-4 py-4 pt-safe-top">
         {/* Table Number Indicator */}
         {tableNumber && (
-          <div className="flex items-center justify-center mb-6">
-            <div className="bg-gray-800 text-white px-4 py-2 rounded-full text-sm font-medium">
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-white px-6 py-3 rounded-2xl text-sm font-semibold shadow-lg">
               Table {tableNumber}
             </div>
           </div>
         )}
 
-        {/* Category Tabs - Directly below table name */}
+        {/* Category Tabs - Modern mobile design */}
         <Tabs
-          key={activeCategory} // Force re-render when category changes
+          key={activeCategory}
           defaultValue="all"
           value={activeCategory}
           onValueChange={setActiveCategory}
           className="w-full"
         >
           <TabsList
-            className="bg-transparent p-0 h-auto flex overflow-x-auto gap-4"
+            className="bg-gray-50 p-1 h-auto flex overflow-x-auto gap-2 rounded-2xl"
             style={{
               scrollbarWidth: "none",
               msOverflowStyle: "none",
@@ -624,7 +624,7 @@ const CustomerMenuContent = () => {
             }}
           >
             <style jsx>{`
-              .bg-transparent::-webkit-scrollbar {
+              .bg-gray-50::-webkit-scrollbar {
                 display: none;
               }
             `}</style>
@@ -632,10 +632,10 @@ const CustomerMenuContent = () => {
               <TabsTrigger
                 key={category}
                 value={category}
-                className={`capitalize px-6 py-3 rounded-full font-medium whitespace-nowrap flex-shrink-0 text-sm transition-colors ${
+                className={`capitalize px-5 py-2.5 rounded-xl font-semibold whitespace-nowrap flex-shrink-0 text-sm transition-all duration-200 ${
                   activeCategory === category
-                    ? "bg-gray-800 text-white shadow-lg"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-white text-gray-900 shadow-md border border-gray-200"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
                 {category === "all" ? "All" : category}
@@ -646,17 +646,17 @@ const CustomerMenuContent = () => {
       </div>
 
       {/* Menu Items Grid */}
-      <div className="bg-white px-6 pt-6 pb-24">
+      <div className="bg-white px-4 pt-4 pb-24">
         {/* Popular Section */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Popular</h2>
-            <button className="text-sm text-gray-700 font-medium">
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900">Popular</h2>
+            <button className="text-sm text-gray-600 font-medium bg-gray-100 px-3 py-1.5 rounded-full">
               See all
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             {filteredItems.slice(0, 4).map((item) => (
               <MenuItemCard
                 key={item.id}
@@ -673,14 +673,14 @@ const CustomerMenuContent = () => {
 
         {/* All Items Section */}
         <div className="mb-4">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">All Items</h2>
-            <button className="text-sm text-gray-700 font-medium">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900">All Items</h2>
+            <button className="text-sm text-gray-600 font-medium bg-gray-100 px-3 py-1.5 rounded-full">
               See all
             </button>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {filteredItems.slice(4).map((item) => (
               <MenuItemListCard
                 key={item.id}

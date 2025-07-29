@@ -24,7 +24,7 @@ interface Order {
   tableNumber: string;
   customerName: string;
   items: OrderItem[];
-  status: "Ready" | "In Progress" | "Completed";
+  status: "Ready" | "In Progress" | "Completed" | "Archived";
   total: number;
   timestamp: string;
   dineIn: boolean;
@@ -55,14 +55,23 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
             quantity: item.quantity,
             price: item.price,
           })),
+          // status:
+          //   order.status === "pending"
+          //     ? ("In Progress" as const)
+          //     : order.status === "preparing"
+          //       ? ("In Progress" as const)
+          //       : order.status === "ready"
+          //         ? ("Ready" as const)
+          //         : ("Completed" as const),
           status:
-            order.status === "pending"
+            order.status === "pending" || order.status === "preparing"
               ? ("In Progress" as const)
-              : order.status === "preparing"
-                ? ("In Progress" as const)
-                : order.status === "ready"
-                  ? ("Ready" as const)
+              : order.status === "ready"
+                ? ("Ready" as const)
+                : order.status === "archived"
+                  ? ("Archived" as const)
                   : ("Completed" as const),
+
           total: order.total,
           timestamp: order.orderTime.toISOString(),
           dineIn: true,
@@ -71,6 +80,11 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
       : propOrders || mockOrders;
 
   const filteredOrders = orders.filter((order) => {
+    // Always exclude archived orders from the dashboard
+    if (order.status === "Archived") {
+      return false;
+    }
+
     // Filter by tab
     if (activeTab !== "all" && order.status.toLowerCase() !== activeTab) {
       return false;
@@ -91,7 +105,7 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
 
   const handleUpdateOrderStatus = async (
     orderId: string,
-    newStatus: "Ready" | "In Progress" | "Completed",
+    newStatus: "Ready" | "In Progress" | "Completed" | "Archived",
   ) => {
     console.log(
       `🔄 OrdersDashboard: Updating order ${orderId} to status: ${newStatus}`,
@@ -103,6 +117,7 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
         "In Progress": "preparing" as const,
         Ready: "ready" as const,
         Completed: "completed" as const,
+        Archived: "archived" as const,
       };
 
       const contextStatus = statusMap[newStatus];
@@ -140,40 +155,64 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
   };
 
   return (
-    <div className="w-full h-full bg-background p-6">
-      <div className="flex flex-col space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Orders Dashboard</h1>
-          <div className="flex items-center space-x-2">
+    <div className="w-full h-full bg-background p-3 sm:p-4 lg:p-6">
+      <div className="flex flex-col space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">
+            Orders Dashboard
+          </h1>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
                 placeholder="Search orders..."
-                className="pl-8 w-[250px]"
+                className="pl-8 w-full sm:w-[200px] lg:w-[250px] text-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button onClick={handleRefresh} disabled={isRefreshing}>
+            <Button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              size="sm"
+              className="text-xs sm:text-sm"
+            >
               <RefreshCw
-                className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+                className={`h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 ${isRefreshing ? "animate-spin" : ""}`}
               />
-              {isRefreshing ? "Refreshing..." : "Refresh"}
+              <span className="hidden sm:inline">
+                {isRefreshing ? "Refreshing..." : "Refresh"}
+              </span>
+              <span className="sm:hidden">↻</span>
             </Button>
           </div>
         </div>
 
         <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="all">All Orders</TabsTrigger>
-            <TabsTrigger value="in progress">In Progress</TabsTrigger>
-            <TabsTrigger value="ready">Ready</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+            <TabsTrigger value="all" className="text-xs sm:text-sm px-2 py-2">
+              All Orders
+            </TabsTrigger>
+            <TabsTrigger
+              value="in progress"
+              className="text-xs sm:text-sm px-2 py-2"
+            >
+              In Progress
+            </TabsTrigger>
+            <TabsTrigger value="ready" className="text-xs sm:text-sm px-2 py-2">
+              Ready
+            </TabsTrigger>
+            <TabsTrigger
+              value="completed"
+              className="text-xs sm:text-sm px-2 py-2"
+            >
+              Completed
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
               {filteredOrders.length > 0 ? (
                 filteredOrders.map((order) => (
                   <OrderCard
@@ -184,14 +223,14 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
                 ))
               ) : (
                 <div className="col-span-full text-center py-10">
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground text-sm sm:text-base">
                     {loading
                       ? "Loading orders from database..."
                       : "No orders found"}
                   </p>
                   {loading && (
                     <div className="mt-4">
-                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                      <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin mx-auto text-muted-foreground" />
                     </div>
                   )}
                   {!loading && (
@@ -200,13 +239,15 @@ const OrdersDashboard = ({ orders: propOrders }: { orders?: Order[] }) => {
                         variant="outline"
                         onClick={handleRefresh}
                         disabled={isRefreshing}
+                        size="sm"
+                        className="text-xs sm:text-sm"
                       >
                         <RefreshCw
-                          className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`}
+                          className={`h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 ${isRefreshing ? "animate-spin" : ""}`}
                         />
                         Refresh Orders
                       </Button>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground px-4">
                         {import.meta.env.VITE_SUPABASE_URL
                           ? "Connected to database - orders will appear here when placed"
                           : "Using demo data - configure database in project settings for live orders"}
@@ -227,14 +268,14 @@ interface OrderCardProps {
   order: Order;
   onStatusChange: (
     orderId: string,
-    status: "Ready" | "In Progress" | "Completed",
+    status: "Ready" | "In Progress" | "Completed" | "Archived",
   ) => void;
 }
 
 const OrderCard = ({ order, onStatusChange }: OrderCardProps) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const handleStatusChange = async (
-    newStatus: "Ready" | "In Progress" | "Completed",
+    newStatus: "Ready" | "In Progress" | "Completed" | "Archived",
   ) => {
     setIsUpdating(true);
     try {
@@ -254,102 +295,142 @@ const OrderCard = ({ order, onStatusChange }: OrderCardProps) => {
         return "bg-amber-500 text-white";
       case "completed":
         return "bg-gray-500 text-white";
+      case "archived":
+        return "bg-slate-400 text-white";
       default:
         return "bg-blue-500 text-white";
     }
   };
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
+    <Card className="overflow-hidden h-full flex flex-col min-h-[280px] max-w-full">
+      <CardHeader className="pb-1 px-2 sm:px-3 md:px-4 pt-2 sm:pt-3 md:pt-4 flex-shrink-0">
+        <div className="flex justify-between items-start gap-1 sm:gap-2">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex items-center space-x-1 sm:space-x-2">
+              <div className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium text-[10px] sm:text-xs md:text-sm flex-shrink-0">
                 {order.tableNumber}
               </div>
-              <CardTitle>{order.customerName}</CardTitle>
+              <CardTitle className="text-xs sm:text-sm md:text-base truncate leading-tight">
+                Table {order.tableNumber}
+              </CardTitle>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-[10px] sm:text-xs md:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate leading-tight">
               Order #{order.id}
             </p>
           </div>
-          <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+          <Badge
+            className={`${getStatusColor(order.status)} text-[9px] sm:text-[10px] md:text-xs px-1 sm:px-1.5 py-0.5 flex-shrink-0 leading-none`}
+          >
+            {order.status}
+          </Badge>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
+      <CardContent className="flex-1 px-2 sm:px-3 md:px-4 pb-1 sm:pb-2 overflow-hidden">
+        <div className="space-y-0.5 sm:space-y-1 h-full max-h-[120px] sm:max-h-[140px] md:max-h-[160px] overflow-y-auto scrollbar-thin">
           {order.items.map((item, index) => (
-            <div key={index} className="flex justify-between text-sm">
-              <span>
-                {item.quantity}x {item.name}
-              </span>
-              <span>${item.price.toFixed(2)}</span>
+            <div
+              key={index}
+              className="text-[10px] sm:text-xs md:text-sm break-words leading-tight"
+            >
+              <span className="font-medium text-primary">{item.quantity}x</span>
+              <span className="ml-1">{item.name}</span>
             </div>
           ))}
-          <div className="pt-2 mt-2 border-t border-border flex justify-between font-medium">
-            <span>Total</span>
-            <span>${order.total.toFixed(2)}</span>
-          </div>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-between bg-muted/30 pt-2">
-        <div className="text-xs text-muted-foreground">
-          {new Date(order.timestamp).toLocaleTimeString()} •
-          {order.dineIn ? "Dine In" : ""}
-          {order.dineIn && order.takeaway ? " / " : ""}
-          {order.takeaway ? "Takeaway" : ""}
+      <CardFooter className="flex flex-col gap-1 sm:gap-2 bg-muted/30 pt-1 sm:pt-2 px-2 sm:px-3 md:px-4 pb-2 sm:pb-3 md:pb-4 flex-shrink-0 mt-auto">
+        <div className="text-[9px] sm:text-[10px] md:text-xs text-muted-foreground text-center leading-tight">
+          {new Date(order.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })}
         </div>
-        <div className="flex space-x-2">
+
+        <div className="flex flex-col w-full gap-1">
           {order.status === "In Progress" && (
-            <Button
-              size="sm"
-              onClick={() => handleStatusChange("Ready")}
-              disabled={isUpdating}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              {isUpdating ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Mark Ready"
-              )}
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onClick={() => handleStatusChange("Ready")}
+                disabled={isUpdating}
+                className="bg-green-600 hover:bg-green-700 text-white text-[10px] sm:text-xs px-2 py-1 h-6 sm:h-7 md:h-8 w-full min-h-0 leading-none"
+              >
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1 animate-spin" />
+                    <span className="hidden sm:inline">Updating...</span>
+                    <span className="sm:hidden">...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Mark Ready</span>
+                    <span className="sm:hidden">Ready</span>
+                  </>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleStatusChange("Completed")}
+                disabled={isUpdating}
+                className="border-blue-600 text-blue-600 hover:bg-blue-50 text-[10px] sm:text-xs px-2 py-1 h-6 sm:h-7 md:h-8 w-full min-h-0 leading-none"
+              >
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1 animate-spin" />
+                    <span className="hidden sm:inline">Completing...</span>
+                    <span className="sm:hidden">...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Skip to Complete</span>
+                    <span className="sm:hidden">Skip</span>
+                  </>
+                )}
+              </Button>
+            </>
           )}
           {order.status === "Ready" && (
             <Button
               size="sm"
               onClick={() => handleStatusChange("Completed")}
               disabled={isUpdating}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-xs px-2 py-1 h-6 sm:h-7 md:h-8 w-full min-h-0 leading-none"
             >
               {isUpdating ? (
                 <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  Completing...
+                  <Loader2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1 animate-spin" />
+                  <span className="hidden sm:inline">Completing...</span>
+                  <span className="sm:hidden">...</span>
                 </>
               ) : (
-                "Mark Complete"
+                <>
+                  <span className="hidden sm:inline">Mark Complete</span>
+                  <span className="sm:hidden">Complete</span>
+                </>
               )}
             </Button>
           )}
-          {order.status === "In Progress" && (
+          {order.status === "Completed" && (
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => handleStatusChange("Completed")}
+              onClick={() => handleStatusChange("Archived")}
               disabled={isUpdating}
-              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+              className="bg-slate-600 hover:bg-slate-700 text-white text-[10px] sm:text-xs px-2 py-1 h-6 sm:h-7 md:h-8 w-full min-h-0 leading-none"
             >
               {isUpdating ? (
                 <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  Completing...
+                  <Loader2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1 animate-spin" />
+                  <span className="hidden sm:inline">Archiving...</span>
+                  <span className="sm:hidden">...</span>
                 </>
               ) : (
-                "Skip to Complete"
+                <>
+                  <span className="hidden sm:inline">Archive Order</span>
+                  <span className="sm:hidden">Archive</span>
+                </>
               )}
             </Button>
           )}

@@ -106,6 +106,13 @@ BEGIN
         ALTER TABLE tables ADD COLUMN y_position DECIMAL(10,2) DEFAULT 50;
     END IF;
     
+    -- Add table_type column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tables' AND column_name = 'table_type') THEN
+        ALTER TABLE tables ADD COLUMN table_type VARCHAR(20) DEFAULT 'regular';
+        -- Add check constraint
+        ALTER TABLE tables ADD CONSTRAINT tables_table_type_check CHECK (table_type IN ('regular', 'terminal'));
+    END IF;
+    
     -- Add created_at column if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tables' AND column_name = 'created_at') THEN
         ALTER TABLE tables ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
@@ -309,15 +316,15 @@ CREATE TRIGGER update_table_sessions_updated_at BEFORE UPDATE ON table_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 13. Insert initial tables if none exist
-INSERT INTO tables (table_id, name, seats, status, x_position, y_position)
+INSERT INTO tables (table_id, name, seats, status, table_type, x_position, y_position)
 SELECT * FROM (
   VALUES
-  ('1', 'Table 1', 4, 'available', 50, 50),
-  ('2', 'Table 2', 2, 'available', 200, 50),
-  ('3', 'Table 3', 6, 'available', 350, 50),
-  ('4', 'Table 4', 4, 'available', 50, 200),
-  ('5', 'Table 5', 8, 'available', 200, 200)
-) AS v(table_id, name, seats, status, x_position, y_position)
+  ('1', 'Table 1', 4, 'available', 'regular', 50, 50),
+  ('2', 'Table 2', 2, 'available', 'regular', 200, 50),
+  ('3', 'Table 3', 6, 'available', 'regular', 350, 50),
+  ('4', 'Table 4', 4, 'available', 'regular', 50, 200),
+  ('5', 'Table 5', 8, 'available', 'regular', 200, 200)
+) AS v(table_id, name, seats, status, table_type, x_position, y_position)
 WHERE NOT EXISTS (SELECT 1 FROM tables WHERE tables.table_id = v.table_id);
 
 -- 14. Update existing menu items with default values for new columns
@@ -339,11 +346,12 @@ WHERE created_at IS NULL OR updated_at IS NULL;
 UPDATE tables SET 
     seats = COALESCE(seats, 4),
     status = COALESCE(status, 'available'),
+    table_type = COALESCE(table_type, 'regular'),
     x_position = COALESCE(x_position, 50),
     y_position = COALESCE(y_position, 50),
     created_at = COALESCE(created_at, NOW()),
     updated_at = COALESCE(updated_at, NOW())
-WHERE seats IS NULL OR status IS NULL OR x_position IS NULL OR y_position IS NULL OR created_at IS NULL OR updated_at IS NULL;
+WHERE seats IS NULL OR status IS NULL OR table_type IS NULL OR x_position IS NULL OR y_position IS NULL OR created_at IS NULL OR updated_at IS NULL;
 
 -- 17. Final verification queries (uncomment to run)
 -- SELECT 'Menu Items Count:' as info, COUNT(*) as count FROM menu_items;

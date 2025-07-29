@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS tables (
   name VARCHAR(100) NOT NULL,
   seats INTEGER NOT NULL DEFAULT 4,
   status VARCHAR(20) DEFAULT 'available' CHECK (status IN ('available', 'occupied', 'reserved')),
+  table_type VARCHAR(20) DEFAULT 'regular' CHECK (table_type IN ('regular', 'terminal')),
   x_position DECIMAL(10,2) DEFAULT 50,
   y_position DECIMAL(10,2) DEFAULT 50,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -221,15 +222,15 @@ SELECT * FROM (
 WHERE NOT EXISTS (SELECT 1 FROM menu_items WHERE menu_items.name = v.name);
 
 -- Insert initial tables (only if table is empty)
-INSERT INTO tables (table_id, name, seats, status, x_position, y_position)
+INSERT INTO tables (table_id, name, seats, status, table_type, x_position, y_position)
 SELECT * FROM (
   VALUES
-  ('1', 'Table 1', 4, 'available', 50, 50),
-  ('2', 'Table 2', 2, 'available', 200, 50),
-  ('3', 'Table 3', 6, 'available', 350, 50),
-  ('4', 'Table 4', 4, 'available', 50, 200),
-  ('5', 'Table 5', 8, 'available', 200, 200)
-) AS v(table_id, name, seats, status, x_position, y_position)
+  ('1', 'Table 1', 4, 'available', 'regular', 50, 50),
+  ('2', 'Table 2', 2, 'available', 'regular', 200, 50),
+  ('3', 'Table 3', 6, 'available', 'regular', 350, 50),
+  ('4', 'Table 4', 4, 'available', 'regular', 50, 200),
+  ('5', 'Table 5', 8, 'available', 'regular', 200, 200)
+) AS v(table_id, name, seats, status, table_type, x_position, y_position)
 WHERE NOT EXISTS (SELECT 1 FROM tables WHERE tables.table_id = v.table_id);
 
 -- Insert some sample orders for testing (optional)

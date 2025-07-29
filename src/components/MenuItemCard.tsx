@@ -110,7 +110,7 @@ const MenuItemCard = ({
   if (variant === "customer") {
     return (
       <Card
-        className="overflow-hidden bg-white rounded-3xl shadow-lg border-0 w-full relative cursor-pointer"
+        className="overflow-hidden bg-white rounded-2xl shadow-sm border border-gray-100 w-full relative cursor-pointer hover:shadow-md transition-all duration-200"
         onClick={() => onItemClick?.(item)}
       >
         <div className="aspect-square relative">
@@ -120,44 +120,50 @@ const MenuItemCard = ({
             className="w-full h-full object-cover"
             loading="lazy"
           />
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
-            <h3 className="font-bold text-white text-sm mb-1">{item.name}</h3>
+          <div className="absolute top-2 right-2">
+            <div className="flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-full px-2 py-1">
+              <Star className="h-3 w-3 text-yellow-400 fill-current" />
+              <span className="text-white text-xs font-medium">
+                {item.rating}
+              </span>
+            </div>
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+            <h3 className="font-bold text-white text-sm mb-1 leading-tight">
+              {item.name}
+            </h3>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                <span className="text-white text-xs">{item.rating}</span>
+              <div className="flex items-center gap-1 text-white/80">
+                <Clock className="h-3 w-3" />
+                <span className="text-xs">{item.prepTime} min</span>
               </div>
-              <div className="font-bold text-white text-sm">
+              <div className="font-bold text-white text-base">
                 ${item.price.toFixed(2)}
               </div>
             </div>
           </div>
         </div>
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1 text-gray-500">
-              <Clock className="h-3 w-3" />
-              <span className="text-xs">{item.prepTime} min</span>
-            </div>
+        <div className="p-3">
+          <div className="flex items-center justify-center">
             {cartQuantity > 0 ? (
               <div
-                className="flex items-center gap-2"
+                className="flex items-center gap-3 bg-gray-100 rounded-full px-3 py-2"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Button
                   size="sm"
                   onClick={() => onRemoveFromCart?.(item.id)}
-                  className="bg-gray-900 hover:bg-black text-white rounded-full w-8 h-8 p-0 flex items-center justify-center"
+                  className="bg-gray-900 hover:bg-black text-white rounded-full w-7 h-7 p-0 flex items-center justify-center"
                 >
                   <Minus className="h-3 w-3" />
                 </Button>
-                <span className="text-sm font-bold min-w-[24px] text-center bg-gray-100 rounded-full px-2 py-1">
+                <span className="text-sm font-bold min-w-[20px] text-center">
                   {cartQuantity}
                 </span>
                 <Button
                   size="sm"
                   onClick={() => onAddToCart?.(item)}
-                  className="bg-gray-900 hover:bg-black text-white rounded-full w-8 h-8 p-0 flex items-center justify-center"
+                  className="bg-gray-900 hover:bg-black text-white rounded-full w-7 h-7 p-0 flex items-center justify-center"
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
@@ -169,8 +175,9 @@ const MenuItemCard = ({
                   e.stopPropagation();
                   onAddToCart?.(item);
                 }}
-                className="bg-gray-800 hover:bg-gray-900 text-white rounded-full px-4 py-2 text-xs font-medium"
+                className="bg-gray-900 hover:bg-black text-white rounded-full px-6 py-2 text-xs font-semibold flex items-center gap-2 shadow-sm"
               >
+                <Plus className="h-3 w-3" />
                 Add
               </Button>
             )}
@@ -199,76 +206,78 @@ export const MenuItemListCard = ({
 }) => {
   return (
     <Card
-      className="overflow-hidden bg-white rounded-2xl shadow-sm border border-gray-100 w-full cursor-pointer"
+      className="overflow-hidden bg-white rounded-2xl shadow-sm border border-gray-100 w-full cursor-pointer hover:shadow-md transition-all duration-200"
       onClick={() => onItemClick?.(item)}
     >
-      <div className="p-4">
-        <div className="flex gap-4">
-          <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0">
+      <div className="p-3">
+        <div className="flex gap-3">
+          <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
             <img
               src={item.image}
               alt={item.name}
               className="w-full h-full object-cover"
             />
           </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-gray-900 text-base mb-1">
-              {item.name}
-            </h3>
-            <p className="text-sm text-gray-500 mb-2 line-clamp-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="font-bold text-gray-900 text-sm leading-tight truncate pr-2">
+                {item.name}
+              </h3>
+              <div className="font-bold text-gray-900 text-sm flex-shrink-0">
+                ${item.price.toFixed(2)}
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-2 line-clamp-2 leading-relaxed">
               {item.description}
             </p>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1">
                   <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                  <span className="text-xs text-gray-600">{item.rating}</span>
+                  <span className="text-xs text-gray-600 font-medium">
+                    {item.rating}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1 text-gray-500">
                   <Clock className="h-3 w-3" />
-                  <span className="text-xs">{item.prepTime} min</span>
+                  <span className="text-xs">{item.prepTime}m</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="font-bold text-gray-800 text-lg">
-                  ${item.price.toFixed(2)}
-                </div>
-                {cartQuantity > 0 ? (
-                  <div
-                    className="flex items-center gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button
-                      size="sm"
-                      onClick={() => onRemoveFromCart?.(item.id)}
-                      className="bg-gray-900 hover:bg-black text-white rounded-full w-8 h-8 p-0 flex items-center justify-center"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="text-sm font-bold min-w-[24px] text-center bg-gray-100 rounded-full px-2 py-1">
-                      {cartQuantity}
-                    </span>
-                    <Button
-                      size="sm"
-                      onClick={() => onAddToCart?.(item)}
-                      className="bg-gray-900 hover:bg-black text-white rounded-full w-8 h-8 p-0 flex items-center justify-center"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
+              {cartQuantity > 0 ? (
+                <div
+                  className="flex items-center gap-2 bg-gray-100 rounded-full px-2 py-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Button
                     size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddToCart?.(item);
-                    }}
-                    className="bg-gray-800 hover:bg-gray-900 text-white rounded-full w-8 h-8 p-0 flex items-center justify-center"
+                    onClick={() => onRemoveFromCart?.(item.id)}
+                    className="bg-gray-900 hover:bg-black text-white rounded-full w-6 h-6 p-0 flex items-center justify-center"
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs font-bold min-w-[16px] text-center">
+                    {cartQuantity}
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => onAddToCart?.(item)}
+                    className="bg-gray-900 hover:bg-black text-white rounded-full w-6 h-6 p-0 flex items-center justify-center"
                   >
                     <Plus className="h-3 w-3" />
                   </Button>
-                )}
-              </div>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToCart?.(item);
+                  }}
+                  className="bg-gray-900 hover:bg-black text-white rounded-full w-7 h-7 p-0 flex items-center justify-center shadow-sm"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              )}
             </div>
           </div>
         </div>
